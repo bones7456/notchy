@@ -18,10 +18,11 @@ enum SettingsTab: String, CaseIterable {
 struct SettingsContentView: View {
     @State private var selectedTab: SettingsTab = .general
     var onShowNotchChanged: ((Bool) -> Void)?
+    var onExternalDisplayChanged: ((Bool) -> Void)?
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            GeneralTab(onShowNotchChanged: onShowNotchChanged)
+            GeneralTab(onShowNotchChanged: onShowNotchChanged, onExternalDisplayChanged: onExternalDisplayChanged)
                 .tabItem { Label(SettingsTab.general.rawValue, systemImage: SettingsTab.general.icon) }
                 .tag(SettingsTab.general)
 
@@ -40,6 +41,7 @@ struct SettingsContentView: View {
 struct GeneralTab: View {
     @Bindable private var settings = SettingsManager.shared
     var onShowNotchChanged: ((Bool) -> Void)?
+    var onExternalDisplayChanged: ((Bool) -> Void)?
 
     var body: some View {
         Form {
@@ -47,6 +49,15 @@ struct GeneralTab: View {
                 .onChange(of: settings.showNotch) { _, newValue in
                     onShowNotchChanged?(newValue)
                 }
+            Toggle(isOn: $settings.externalDisplayTrigger) {
+                Text("External display trigger")
+                Text("Hover the top-center of external displays to open the panel")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .onChange(of: settings.externalDisplayTrigger) { _, newValue in
+                onExternalDisplayChanged?(newValue)
+            }
             Toggle("Enable sounds", isOn: $settings.soundsEnabled)
             Toggle(isOn: $settings.selectionCopyEnabled) {
                 Text("Copy on selection")
@@ -112,7 +123,7 @@ class SettingsWindowController {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
 
-    func show(onShowNotchChanged: @escaping (Bool) -> Void) {
+    func show(onShowNotchChanged: @escaping (Bool) -> Void, onExternalDisplayChanged: @escaping (Bool) -> Void) {
         if let existing = window {
             existing.level = .floating
             existing.makeKeyAndOrderFront(nil)
@@ -120,7 +131,7 @@ class SettingsWindowController {
             return
         }
 
-        let content = SettingsContentView(onShowNotchChanged: onShowNotchChanged)
+        let content = SettingsContentView(onShowNotchChanged: onShowNotchChanged, onExternalDisplayChanged: onExternalDisplayChanged)
         let hostingView = NSHostingView(rootView: content)
 
         let win = NSWindow(
