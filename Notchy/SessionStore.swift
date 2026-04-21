@@ -314,6 +314,7 @@ class SessionStore {
 
     private func playSound(named name: String) {
         guard SettingsManager.shared.soundsEnabled else { return }
+        if SettingsManager.shared.muteSoundsDuringCalls && MicrophoneActivityMonitor.isInputDeviceActive { return }
         let now = Date()
         guard now.timeIntervalSince(lastSoundPlayedAt) >= 1.0 else { return }
         guard let url = Bundle.main.url(forResource: name, withExtension: "mp3") else { return }

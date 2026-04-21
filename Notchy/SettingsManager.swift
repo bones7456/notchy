@@ -12,6 +12,10 @@ class SettingsManager {
         didSet { UserDefaults.standard.set(soundsEnabled, forKey: "soundsEnabled") }
     }
 
+    var muteSoundsDuringCalls: Bool {
+        didSet { UserDefaults.standard.set(muteSoundsDuringCalls, forKey: "muteSoundsDuringCalls") }
+    }
+
     var xcodeIntegrationEnabled: Bool {
         didSet { UserDefaults.standard.set(xcodeIntegrationEnabled, forKey: "xcodeIntegrationEnabled") }
     }
@@ -32,6 +36,7 @@ class SettingsManager {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: "replaceNotch") == nil { defaults.set(true, forKey: "replaceNotch") }
         if defaults.object(forKey: "soundsEnabled") == nil { defaults.set(true, forKey: "soundsEnabled") }
+        if defaults.object(forKey: "muteSoundsDuringCalls") == nil { defaults.set(false, forKey: "muteSoundsDuringCalls") }
         if defaults.object(forKey: "xcodeIntegrationEnabled") == nil { defaults.set(true, forKey: "xcodeIntegrationEnabled") }
         if defaults.object(forKey: "claudeIntegrationEnabled") == nil { defaults.set(true, forKey: "claudeIntegrationEnabled") }
         if defaults.object(forKey: "selectionCopyEnabled") == nil { defaults.set(true, forKey: "selectionCopyEnabled") }
@@ -39,6 +44,7 @@ class SettingsManager {
 
         showNotch = defaults.bool(forKey: "replaceNotch")
         soundsEnabled = defaults.bool(forKey: "soundsEnabled")
+        muteSoundsDuringCalls = defaults.bool(forKey: "muteSoundsDuringCalls")
         xcodeIntegrationEnabled = defaults.bool(forKey: "xcodeIntegrationEnabled")
         claudeIntegrationEnabled = defaults.bool(forKey: "claudeIntegrationEnabled")
         selectionCopyEnabled = defaults.bool(forKey: "selectionCopyEnabled")
