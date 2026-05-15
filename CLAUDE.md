@@ -12,6 +12,22 @@ xcodebuild -project Notchy.xcodeproj -scheme Notchy -configuration Debug build
 
 There are no tests or linting configured yet.
 
+## Release
+
+Releases are cut by GitHub Actions, triggered by pushing a `v*` tag. To ship a new version:
+
+1. Bump `MARKETING_VERSION` in `Notchy.xcodeproj/project.pbxproj` (both Debug and Release configs) and commit.
+2. Tag and push:
+   ```bash
+   git tag -a v1.2.0 -m "v1.2.0" && git push origin v1.2.0
+   ```
+
+`.github/workflows/release.yml` takes over from there: it signs the app with Developer ID Application (team `RHVTXHK83V`), notarizes via `notarytool`, and attaches a DMG and a ZIP to the auto-created GitHub Release. Signing/notarization secrets (`SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_APP_PASSWORD`, `APPLE_TEAM_ID`) are configured in the repo settings.
+
+Notes for working on the pipeline itself (`scripts/build_app.sh`, `scripts/package_release.sh`):
+- `build_app.sh` copies the `.app` straight out of the `.xcarchive` instead of using `xcodebuild -exportArchive` — Xcode 26's exportArchive can't find a distribution method when signing settings are overridden on the command line.
+- When `SIGNING_IDENTITY` is set, `build_app.sh` forces manual signing with `CODE_SIGN_IDENTITY="Developer ID Application: LuYang Li (RHVTXHK83V)"`. Without that override, Xcode 26 picks an Apple Development cert during archive and the resulting archive isn't distributable.
+
 ## Overview
 
 Notchy is a macOS menu bar app that provides a floating terminal panel anchored to the MacBook notch, with automatic Xcode project detection. When the user hovers over the notch or clicks the menu bar icon, a floating panel appears with embedded terminal sessions (via SwiftTerm) that auto-`cd` into detected Xcode project directories and launch `claude`.
