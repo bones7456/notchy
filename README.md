@@ -2,6 +2,8 @@
 
 A macOS menu bar app that puts Claude Code right in your MacBook's notch. Hover over the notch or click the menu bar icon to open a floating terminal panel with embedded sessions that automatically detect your open Xcode projects.
 
+> This is a community-maintained continuation of [adamlyttleapps/notchy](https://github.com/adamlyttleapps/notchy), which is no longer being updated by the original author. Huge thanks to [Adam Lyttle](https://github.com/adamlyttleapps) for creating the project and open-sourcing it — this fork exists only to keep it alive and ship small fixes/improvements on top.
+
 <!-- Add your screenshot here: ![Notchy](screenshot.png) -->
 
 ## Features
@@ -28,6 +30,11 @@ xcodebuild -project Notchy.xcodeproj -scheme Notchy -configuration Debug build
 ## Dependencies
 
 - [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) — terminal emulator view (via Swift Package Manager)
+
+## Credits
+
+- Original project by [Adam Lyttle](https://github.com/adamlyttleapps) — [adamlyttleapps/notchy](https://github.com/adamlyttleapps/notchy)
+- This fork is maintained by [@bones7456](https://github.com/bones7456)
 
 ## License
 
