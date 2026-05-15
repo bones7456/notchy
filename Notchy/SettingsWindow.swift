@@ -2,9 +2,9 @@ import SwiftUI
 import AppKit
 
 enum SettingsTab: String, CaseIterable {
+    case about = "About"
     case general = "General"
     case integrations = "Integrations"
-    case about = "About"
 
     var icon: String {
         switch self {
@@ -16,7 +16,7 @@ enum SettingsTab: String, CaseIterable {
 }
 
 struct SettingsContentView: View {
-    @State private var selectedTab: SettingsTab = .general
+    @State private var selectedTab: SettingsTab = .about
     var onShowNotchChanged: ((Bool) -> Void)?
     var onExternalDisplayChanged: ((Bool) -> Void)?
 

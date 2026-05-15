@@ -184,15 +184,6 @@ class SessionStore {
             }
         }
 
-        // Stop terminals for projects that are no longer open in Xcode
-        for i in sessions.indices {
-            let session = sessions[i]
-            guard session.projectPath != nil else { continue } // skip plain terminals
-            if !detectedNames.contains(session.projectName) && session.hasStarted {
-                TerminalManager.shared.destroyTerminal(for: session.id)
-                sessions[i].hasStarted = false
-            }
-        }
 
         for project in projects {
             guard !sessions.contains(where: { $0.projectName == project.name }),
@@ -222,6 +213,22 @@ class SessionStore {
             return true
         }
         return false
+    }
+
+    func selectNextSession() {
+        guard sessions.count > 1,
+              let currentIndex = sessions.firstIndex(where: { $0.id == activeSessionId })
+        else { return }
+        let nextIndex = (currentIndex + 1) % sessions.count
+        selectSession(sessions[nextIndex].id)
+    }
+
+    func selectPreviousSession() {
+        guard sessions.count > 1,
+              let currentIndex = sessions.firstIndex(where: { $0.id == activeSessionId })
+        else { return }
+        let prevIndex = (currentIndex - 1 + sessions.count) % sessions.count
+        selectSession(sessions[prevIndex].id)
     }
 
     /// Select a tab — auto-starts the terminal only if the project's Xcode instance is active

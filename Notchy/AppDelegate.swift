@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var panel: TerminalPanel!
@@ -12,7 +13,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hoverHideTimer: Timer?
     private var hoverGlobalMonitor: Any?
     private var hoverLocalMonitor: Any?
-    private var hotkeyMonitor: Any?
     /// Whether the panel was opened via notch hover (vs status item click)
     private var panelOpenedViaHover = false
     /// The screen that triggered the current hover-opened panel.
@@ -38,8 +38,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(named: "menuIcon") //NSImage(systemSymbolName: "terminal", accessibilityDescription: "Notchy")
-            button.image?.isTemplate = true  // lets macOS handle light/dark mode
+            button.image = NSImage(named: "menuIcon")
+            button.image?.isTemplate = true
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -54,15 +54,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: panel,
             queue: .main
         ) { [weak self] _ in
-            guard let self, !self.panel.isVisible else { return }
+            guard let self, !self.panel.isShown else { return }
             self.notchWindow?.endHover()
             for window in self.externalNotchWindows.values { window.endHover() }
             self.panelOpenedViaHover = false
             self.hoverTriggerScreen = nil
             self.stopHoverTracking()
         }
-        // When panel becomes key (user clicked on it), stop hover tracking
-        // since resign-key will handle hiding from here
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
             object: panel,
@@ -73,8 +71,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.panelOpenedViaHover = false
                 self.hoverTriggerScreen = nil
                 self.stopHoverTracking()
-                // Panel is now in "click mode" — shrink the notch hover state
-                // since hover tracking is no longer managing it
                 self.notchWindow?.endHover()
                 for window in self.externalNotchWindows.values { window.endHover() }
             }
@@ -86,22 +82,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.notchHovered(on: NSScreen.builtIn)
         }
         notchWindow?.isPanelVisible = { [weak self] in
-            self?.panel.isVisible ?? false
+            self?.panel.isShown ?? false
         }
     }
 
     private func setupHotkey() {
-        // Global monitor: fires when another app is focused (backtick = keyCode 50)
-        hotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 50,
-                  event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function).isEmpty
-            else { return }
-            DispatchQueue.main.async { self?.togglePanel() }
+        HotkeyManager.shared.onHotkey = { [weak self] in
+            self?.togglePanel()
+        }
+        HotkeyManager.shared.setup()
+
+        // Re-check when app becomes active (user may have just granted permission in System Settings)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            HotkeyManager.shared.recheckIfNeeded()
         }
     }
 
     private func notchHovered(on screen: NSScreen? = nil) {
-        guard !panel.isVisible else { return }
+        guard !panel.isShown else { return }
         let targetScreen = screen ?? NSScreen.builtIn ?? NSScreen.main!
         hoverTriggerScreen = targetScreen
         panel.showPanelCentered(on: targetScreen)
@@ -137,7 +139,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkHoverBounds() {
-        guard panel.isVisible, panelOpenedViaHover, !sessionStore.isPinned, !sessionStore.isShowingDialog else {
+        guard panel.isShown, panelOpenedViaHover, !sessionStore.isShowingDialog else {
             cancelHoverHide()
             return
         }
@@ -158,7 +160,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard hoverHideTimer == nil else { return }
         hoverHideTimer = Timer.scheduledTimer(withTimeInterval: hoverHideDelay, repeats: false) { [weak self] _ in
             guard let self else { return }
-            // Re-check one more time before hiding (mouse may have returned)
             let mouse = NSEvent.mouseLocation
             let inNotch = self.notchWindow?.frame.insetBy(dx: -self.hoverMargin, dy: -self.hoverMargin).contains(mouse) ?? false
             let inExternalNotch = self.externalNotchWindows.values.contains { $0.frame.insetBy(dx: -self.hoverMargin, dy: -self.hoverMargin).contains(mouse) }
@@ -183,8 +184,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         showContextMenu()
     }
 
-    private func togglePanel() {
-        if panel.isVisible {
+    func togglePanel() {
+        guard !panel.isAnimating else { return }
+        if panel.isShown {
             panel.hidePanel()
             notchWindow?.endHover()
             for window in externalNotchWindows.values { window.endHover() }
@@ -193,11 +195,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             stopHoverTracking()
         } else {
             panelOpenedViaHover = false
-            // Show panel immediately
             showPanelBelowStatusItem()
-
-            // Then detect projects in background
             sessionStore.detectAndSwitchAsync()
+        }
+    }
+
+    private func showPanelBelowStatusItem() {
+        if let button = statusItem.button, let window = button.window {
+            let screenRect = window.convertToScreen(button.frame)
+            panel.showPanel(below: screenRect)
         }
     }
 
@@ -297,15 +303,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         showPanelBelowStatusItem()
     }
 
-    private func showPanelBelowStatusItem() {
-        if let button = statusItem.button,
-           let window = button.window {
-            let buttonRect = button.convert(button.bounds, to: nil)
-            let screenRect = window.convertToScreen(buttonRect)
-            panel.showPanel(below: screenRect)
-        }
-    }
-
     // MARK: - External display management
 
     private func observeScreenChanges() {
@@ -335,7 +332,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.notchHovered(on: screen)
             }
             window.isPanelVisible = { [weak self] in
-                self?.panel.isVisible ?? false
+                self?.panel.isShown ?? false
             }
             externalNotchWindows[id] = window
         }

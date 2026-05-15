@@ -48,10 +48,10 @@ struct PanelContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Black top border — separate element so it pushes content down
+            // Top spacing so content clears the rounded corner area
             Rectangle()
-                .fill(Color.black)
-                .frame(height: 10)
+                .fill(Color.clear)
+                .frame(height: 6)
 
             // Top bar: tabs + controls
             HStack(spacing: 8) {
@@ -126,7 +126,7 @@ struct PanelContentView: View {
                 .padding(.trailing, -10)
             }
             .padding(.horizontal, 12)
-            .background(Color(nsColor: NSColor(white: 0.14, alpha: 1.0)).opacity(chromeBackgroundOpacity))
+            .background(Color.white.opacity(0.06))
 
             if sessionStore.isTerminalExpanded, sessionStore.checkpointStatus != nil || sessionStore.lastCheckpoint != nil {
                 HStack(spacing: 6) {
@@ -192,7 +192,7 @@ struct PanelContentView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color(nsColor: NSColor(white: 0.18, alpha: 1.0)).opacity(chromeBackgroundOpacity))
+                .background(Color.white.opacity(0.04))
                 .foregroundColor(.white.opacity(0.8))
             }
 
@@ -238,10 +238,9 @@ struct PanelContentView: View {
                     placeholderView("Select a project to begin")
                 }
             }
+
         }
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 8.5, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 8.5))
-        .background(Color(nsColor: NSColor(white: 0.1, alpha: 1.0)).opacity(chromeBackgroundOpacity))
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 8.5, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 8.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .onAppear {
             sessionStore.refreshLastCheckpoint()
         }
@@ -277,7 +276,7 @@ struct PanelContentView: View {
     }
 
     private func placeholderView(_ message: String) -> some View {
-        Color(nsColor: NSColor(white: 0.1, alpha: 1.0))
+        Color.clear
             .overlay {
                 Text(message)
                     .font(.system(size: 13))
