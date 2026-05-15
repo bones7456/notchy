@@ -15,6 +15,10 @@ xcuserdata/
 .build/
 Packages/
 
+# Release artifacts (built by scripts/package_release.sh)
+dist/
+build/
+
 # Misc
 *.ipa
 *.dSYM.zip
