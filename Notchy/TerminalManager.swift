@@ -7,6 +7,15 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private var statusDebounceTimer: Timer?
     private var selectionCopyDebounceTimer: Timer?
 
+    // SwiftTerm's NSTextInputClient implementation drops marked (preedit)
+    // text on the floor, so IME users only see the candidate window and
+    // have no inline view of the pinyin/romaji they're typing. We capture
+    // the marked string and render it in a small floating panel anchored
+    // at the caret.
+    private var markedString: String = ""
+    private var preeditPanel: NSPanel?
+    private var preeditLabel: NSTextField?
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override init(frame: NSRect) {
@@ -25,6 +34,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         if let monitor = keyMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        preeditPanel?.orderOut(nil)
     }
 
     /// Intercept arrow key events locally and send standard VT100/xterm sequences
@@ -212,6 +222,138 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
             guard line.dropFirst().first == " " else { return false }
             return line.contains("…")
         }
+    }
+
+    // MARK: - IME preedit (marked text)
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        // Let SwiftTerm flip its kittyIsComposing flag so raw keys aren't
+        // forwarded to the shell mid-composition.
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+
+        let text: String
+        if let attr = string as? NSAttributedString {
+            text = attr.string
+        } else {
+            text = (string as? String) ?? ""
+        }
+        markedString = text
+        if text.isEmpty {
+            hidePreeditPanel()
+        } else {
+            showPreeditPanel(with: text)
+        }
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        markedString = ""
+        hidePreeditPanel()
+    }
+
+    /// IMEs commit text via insertText: without always calling unmarkText
+    /// first, so we have to clear the preedit panel here too — otherwise the
+    /// last pinyin (e.g. "ce shi") stays on screen after "测试" is committed.
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        super.insertText(string, replacementRange: replacementRange)
+        if !markedString.isEmpty {
+            markedString = ""
+            hidePreeditPanel()
+        }
+    }
+
+    override func hasMarkedText() -> Bool {
+        return !markedString.isEmpty
+    }
+
+    override func markedRange() -> NSRange {
+        return markedString.isEmpty
+            ? NSRange(location: NSNotFound, length: 0)
+            : NSRange(location: 0, length: markedString.utf16.count)
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil {
+            markedString = ""
+            hidePreeditPanel()
+        }
+    }
+
+    private func ensurePreeditPanel() -> (NSPanel, NSTextField) {
+        if let panel = preeditPanel, let label = preeditLabel {
+            return (panel, label)
+        }
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 80, height: 22),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.hasShadow = true
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.level = .popUpMenu
+
+        let visual = NSVisualEffectView()
+        visual.material = .hudWindow
+        visual.state = .active
+        visual.wantsLayer = true
+        visual.layer?.cornerRadius = 4
+        visual.layer?.masksToBounds = true
+
+        let label = NSTextField(labelWithString: "")
+        label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        label.backgroundColor = .clear
+        label.isBezeled = false
+        label.isEditable = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        visual.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: visual.leadingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: visual.trailingAnchor, constant: -6),
+            label.centerYAnchor.constraint(equalTo: visual.centerYAnchor),
+        ])
+
+        panel.contentView = visual
+        preeditPanel = panel
+        preeditLabel = label
+        return (panel, label)
+    }
+
+    private func showPreeditPanel(with text: String) {
+        let (panel, label) = ensurePreeditPanel()
+
+        let attr = NSAttributedString(string: text, attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: NSColor.labelColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+        ])
+        label.attributedStringValue = attr
+        label.sizeToFit()
+
+        let labelSize = label.frame.size
+        let panelSize = NSSize(width: labelSize.width + 12, height: labelSize.height + 6)
+        panel.setContentSize(panelSize)
+
+        // firstRect returns the caret rect in screen coordinates. Position the
+        // panel ABOVE the caret line — macOS docks the system IME candidate
+        // window just below firstRect, so anchoring our panel below would
+        // cover the candidates.
+        let caretRect = firstRect(forCharacterRange: NSRange(location: 0, length: 0), actualRange: nil)
+        let origin = NSPoint(x: caretRect.origin.x, y: caretRect.origin.y + caretRect.height - 18)
+        panel.setFrameOrigin(origin)
+
+        if !panel.isVisible {
+            panel.orderFront(nil)
+        }
+    }
+
+    private func hidePreeditPanel() {
+        preeditPanel?.orderOut(nil)
     }
 }
 
