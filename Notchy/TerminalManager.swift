@@ -5,6 +5,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     var sessionId: UUID?
     private var keyMonitor: Any?
     private var statusDebounceTimer: Timer?
+    private var selectionCopyDebounceTimer: Timer?
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -63,6 +64,22 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
                 self.send(txt: "\u{1b}[1;\(modifier)\(code)")
             }
             return nil // consume the event
+        }
+    }
+
+    /// iTerm2-style "copy on selection": when the selection settles after a
+    /// mouse drag, write the selected text to the system pasteboard. SwiftTerm
+    /// fires selectionChanged for every drag extension, so we debounce ~80ms
+    /// and only act once the gesture is quiet. Empty selections (single click,
+    /// deselection) leave the clipboard untouched.
+    override func selectionChanged(source: Terminal) {
+        super.selectionChanged(source: source)
+        guard SettingsManager.shared.selectionCopyEnabled else { return }
+        selectionCopyDebounceTimer?.invalidate()
+        selectionCopyDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            guard self.selectedRange().length > 0 else { return }
+            self.copy(self)
         }
     }
 

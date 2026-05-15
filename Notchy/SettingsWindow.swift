@@ -48,6 +48,12 @@ struct GeneralTab: View {
                     onShowNotchChanged?(newValue)
                 }
             Toggle("Enable sounds", isOn: $settings.soundsEnabled)
+            Toggle(isOn: $settings.selectionCopyEnabled) {
+                Text("Copy on selection")
+                Text("Mouse selection copies to clipboard automatically (iTerm2-style)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
