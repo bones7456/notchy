@@ -17,6 +17,12 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
     private var expandedHeight: CGFloat
     private var resizeIndicatorHideWork: DispatchWorkItem?
 
+    /// Clips the sliding `visualEffect` to the window bounds so the slide-in
+    /// animation never renders pixels above the primary screen's top edge
+    /// (which would otherwise spill onto a display mounted above).
+    private let contentWrapper = NSView()
+    private let visualEffect = NSVisualEffectView()
+
     private(set) var isAnimating = false
     private(set) var isShown = false
 
@@ -49,16 +55,19 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
         delegate = self
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        // Frosted-glass background layer
-        let visualEffect = NSVisualEffectView()
+        // Clipping wrapper: holds the rounded corners and bounds the slide-in
+        // animation so it can't spill outside the window's visible footprint.
+        contentWrapper.wantsLayer = true
+        contentWrapper.layer?.cornerRadius = 8
+        contentWrapper.layer?.masksToBounds = true
+
+        // Frosted-glass background — sized to the wrapper, slides vertically
+        // within it during show/hide.
         visualEffect.material = .hudWindow
         visualEffect.blendingMode = .behindWindow
         visualEffect.state = .active
         visualEffect.wantsLayer = true
-        visualEffect.layer?.cornerRadius = 8
-        visualEffect.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner,
-                                              .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
-        visualEffect.layer?.masksToBounds = true
+        visualEffect.autoresizingMask = [.width, .height]
 
         let swiftUIContent = PanelContentView(
             sessionStore: sessionStore,
@@ -76,7 +85,9 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
             hosting.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor),
         ])
 
-        self.contentView = visualEffect
+        contentWrapper.addSubview(visualEffect)
+        self.contentView = contentWrapper
+        visualEffect.frame = contentWrapper.bounds
 
         NotificationCenter.default.addObserver(
             self,
@@ -174,17 +185,22 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
         let panelHeight = frame.height
         let visibleTop = screen.visibleFrame.maxY
 
-        // Start hidden: tucked behind the menu bar/notch.
-        let hiddenFrame = NSRect(x: targetX, y: visibleTop, width: panelWidth, height: panelHeight)
-        setFrame(hiddenFrame, display: false)
-        makeKeyAndOrderFront(nil)
-
+        // The window itself sits at its final on-screen position the entire
+        // time — we slide the content inside instead. This keeps the window
+        // from briefly extending above the primary screen's top edge (which
+        // would render onto a display mounted above the MacBook).
         let shownFrame = NSRect(
             x: targetX,
             y: visibleTop - panelHeight,
             width: panelWidth,
             height: panelHeight
         )
+        setFrame(shownFrame, display: false)
+
+        // Park the content directly above the wrapper so it's clipped out,
+        // then animate it down into place.
+        visualEffect.frame = NSRect(x: 0, y: panelHeight, width: panelWidth, height: panelHeight)
+        makeKeyAndOrderFront(nil)
 
         isAnimating = true
         isShown = true
@@ -192,7 +208,7 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
             ctx.duration = 0.25
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             ctx.allowsImplicitAnimation = true
-            self.animator().setFrame(shownFrame, display: true)
+            self.visualEffect.animator().setFrameOrigin(.zero)
         }, completionHandler: { [weak self] in
             self?.isAnimating = false
         })
@@ -205,30 +221,22 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
             if !isShown { orderOut(nil) }
             return
         }
-        guard let screen = self.screen ?? NSScreen.main else {
-            orderOut(nil)
-            isShown = false
-            return
-        }
 
-        let visibleTop = screen.visibleFrame.maxY
-        let hiddenFrame = NSRect(
-            x: frame.origin.x,
-            y: visibleTop,
-            width: frame.width,
-            height: frame.height
-        )
+        let panelHeight = frame.height
 
         isAnimating = true
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.2
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
             ctx.allowsImplicitAnimation = true
-            self.animator().setFrame(hiddenFrame, display: true)
+            self.visualEffect.animator().setFrameOrigin(NSPoint(x: 0, y: panelHeight))
         }, completionHandler: { [weak self] in
-            self?.orderOut(nil)
-            self?.isAnimating = false
-            self?.isShown = false
+            guard let self else { return }
+            self.orderOut(nil)
+            self.isAnimating = false
+            self.isShown = false
+            // Restore content to fill the wrapper so the next show starts clean.
+            self.visualEffect.frame = self.contentWrapper.bounds
         })
     }
 
