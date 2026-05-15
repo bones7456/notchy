@@ -28,9 +28,18 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
     /// Intercept arrow key events locally and send standard VT100/xterm sequences
     /// to avoid kitty keyboard protocol (CSI u) encoding issues.
+    /// Also intercept Shift+Enter to send the kitty CSI u sequence so Claude CLI
+    /// inserts a newline instead of submitting the prompt.
     private func installArrowKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, self.window?.firstResponder === self else { return event }
+
+            // Shift+Enter: send kitty keyboard protocol sequence for newline
+            if event.keyCode == 36,
+               event.modifierFlags.intersection([.shift, .option, .control, .command]) == .shift {
+                self.send(txt: "\u{1b}[13;2u")
+                return nil // consume the event
+            }
 
             let arrowCode: String?
             switch event.keyCode {
