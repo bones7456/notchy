@@ -70,6 +70,21 @@ struct PanelContentView: View {
                 }
                 .padding(.trailing, -4)
                 .padding(.leading, -10)
+                .overlay(alignment: .leading) {
+                    if let resizeText = sessionStore.resizeIndicatorText {
+                        Text(resizeText)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.7))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .fixedSize()
+                            .offset(x: 24)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+                }
 
                 Rectangle()
                     .foregroundColor(.clear)

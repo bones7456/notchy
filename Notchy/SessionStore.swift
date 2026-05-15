@@ -29,6 +29,9 @@ class SessionStore {
     var isShowingDialog = false
     var hasCompletedInitialDetection = false
 
+    /// Non-nil while resizing (and for 1s after release) — shown next to the pin icon.
+    var resizeIndicatorText: String?
+
     /// The most recent checkpoint for the active session, used to show the undo button
     var lastCheckpoint: Checkpoint?
     /// Project name associated with lastCheckpoint
