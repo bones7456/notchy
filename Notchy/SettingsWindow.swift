@@ -102,8 +102,20 @@ struct IntegrationsTab: View {
 }
 
 struct AboutTab: View {
+    @State private var updateChecker = UpdateChecker.shared
+
+    private var versionString: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        if !build.isEmpty && build != version {
+            return "Version \(version) (\(build))"
+        }
+        return "Version \(version)"
+    }
+
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .frame(width: 64, height: 64)
@@ -111,18 +123,91 @@ struct AboutTab: View {
             Text("Notchy")
                 .font(.title2.bold())
 
-            Text("by Adam Lyttle")
-                .font(.body)
+            Text(versionString)
+                .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Button("github.com/adamlyttleapps") {
-                if let url = URL(string: "https://github.com/adamlyttleapps") {
+            updateStatusView
+
+            Button("github.com/bones7456/notchy") {
+                if let url = URL(string: "https://github.com/bones7456/notchy") {
                     NSWorkspace.shared.open(url)
                 }
             }
             .buttonStyle(.link)
+
+            HStack(spacing: 4) {
+                Text("Originally by")
+                    .foregroundStyle(.secondary)
+                Button("Adam Lyttle") {
+                    if let url = URL(string: "https://github.com/adamlyttleapps") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .buttonStyle(.link)
+            }
+            .font(.caption)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            if case .idle = updateChecker.state {
+                await updateChecker.check()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var updateStatusView: some View {
+        switch updateChecker.state {
+        case .idle:
+            Button("Check for Updates") {
+                Task { await updateChecker.check() }
+            }
+            .font(.caption)
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Checking for updates…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .upToDate:
+            HStack(spacing: 6) {
+                Text("You're on the latest version.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Check Again") {
+                    Task { await updateChecker.check() }
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            }
+        case .updateAvailable(let latest, _, let url):
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .foregroundStyle(.tint)
+                Text("New version \(latest) available")
+                    .font(.caption)
+                Button("View Release") {
+                    NSWorkspace.shared.open(url)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+        case .failed(let message):
+            HStack(spacing: 6) {
+                Text("Update check failed: \(message)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Button("Retry") {
+                    Task { await updateChecker.check() }
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            }
+        }
     }
 }
 
