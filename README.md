@@ -16,10 +16,19 @@ A macOS menu bar app that puts Claude Code right in your MacBook's notch. Hover 
 
 ## Requirements
 
-- macOS 26.0+
+- macOS 15.6+
 - MacBook with a notch (for notch features; menu bar still works without one)
 
-## Building
+## Install
+
+Grab the latest signed, notarized build from the [Releases page](https://github.com/bones7456/notchy/releases/latest):
+
+- **`Notchy-x.y.z.dmg`** — drag-and-drop installer (recommended)
+- **`Notchy-x.y.z.zip`** — just the `.app` if you prefer to copy it into `/Applications` yourself
+
+The build is signed with Developer ID and notarized by Apple, so macOS opens it without Gatekeeper warnings.
+
+### Build from source
 
 Open `Notchy.xcodeproj` in Xcode and build (Cmd+B), or from the command line:
 
