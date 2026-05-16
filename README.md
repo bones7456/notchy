@@ -1,6 +1,6 @@
 # Notchy
 
-A macOS menu bar app that puts Claude Code right in your MacBook's notch. Hover over the notch or click the menu bar icon to open a floating terminal panel with embedded sessions that automatically detect your open Xcode projects.
+A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notch. Hover over the notch or click the menu bar icon to open a floating terminal panel with embedded sessions that automatically detect your open Xcode projects and launch the matching AI coding assistant.
 
 > This is a community-maintained continuation of [adamlyttleapps/notchy](https://github.com/adamlyttleapps/notchy), which is no longer being updated by the original author. Huge thanks to [Adam Lyttle](https://github.com/adamlyttleapps) for creating the project and open-sourcing it — this fork exists only to keep it alive and ship small fixes/improvements on top.
 
@@ -10,9 +10,10 @@ A macOS menu bar app that puts Claude Code right in your MacBook's notch. Hover 
 
 - **Notch integration** — hover over the MacBook notch to reveal the terminal panel
 - **Xcode project detection** — automatically discovers open Xcode projects and `cd`s into them
-- **Multi-session tabs** — run multiple Claude Code sessions side by side
-- **Live status in the notch** — animated pill shows whether Claude is working, waiting, or done
-- **Git checkpoints** — Cmd+S to snapshot your project before Claude makes changes
+- **AI agent auto-launch** — starts `claude` for projects with `CLAUDE.md`, or `codex` for projects with `AGENTS.md`
+- **Multi-session tabs** — run multiple Claude Code or Codex sessions side by side
+- **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
+- **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes
 
 ## Requirements
 

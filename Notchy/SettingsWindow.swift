@@ -34,7 +34,7 @@ struct SettingsContentView: View {
                 .tabItem { Label(SettingsTab.about.rawValue, systemImage: SettingsTab.about.icon) }
                 .tag(SettingsTab.about)
         }
-        .frame(width: 450, height: 240)
+        .frame(width: 520, height: 360)
     }
 }
 
@@ -45,36 +45,49 @@ struct GeneralTab: View {
 
     var body: some View {
         Form {
-            Toggle("Show notch overlay", isOn: $settings.showNotch)
+            Section("Notch") {
+                Toggle(isOn: $settings.showNotch) {
+                    Text("Show notch overlay")
+                    Text("Replace the system notch with the Notchy pill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 .onChange(of: settings.showNotch) { _, newValue in
                     onShowNotchChanged?(newValue)
                 }
-            Toggle(isOn: $settings.externalDisplayTrigger) {
-                Text("External display trigger")
-                Text("Hover the top-center of external displays to open the panel")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Toggle(isOn: $settings.externalDisplayTrigger) {
+                    Text("External display trigger")
+                    Text("Hover the top-center of external displays to open the panel")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .onChange(of: settings.externalDisplayTrigger) { _, newValue in
+                    onExternalDisplayChanged?(newValue)
+                }
             }
-            .onChange(of: settings.externalDisplayTrigger) { _, newValue in
-                onExternalDisplayChanged?(newValue)
+
+            Section("Sounds") {
+                Toggle("Enable sounds", isOn: $settings.soundsEnabled)
+                Toggle(isOn: $settings.muteSoundsDuringCalls) {
+                    Text("Mute during calls")
+                    Text("Silence alerts while the microphone is in use (Zoom, Meet, FaceTime, etc.)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .disabled(!settings.soundsEnabled)
             }
-            Toggle("Enable sounds", isOn: $settings.soundsEnabled)
-            Toggle(isOn: $settings.muteSoundsDuringCalls) {
-                Text("Mute sounds during calls")
-                Text("Silence alerts while the microphone is in use (Zoom, Meet, FaceTime, etc.)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .disabled(!settings.soundsEnabled)
-            Toggle(isOn: $settings.selectionCopyEnabled) {
-                Text("Copy on selection")
-                Text("Mouse selection copies to clipboard automatically (iTerm2-style)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+            Section("Terminal") {
+                Toggle(isOn: $settings.selectionCopyEnabled) {
+                    Text("Copy on selection")
+                    Text("Mouse selection copies to clipboard automatically (iTerm2-style)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 }
 
@@ -83,21 +96,73 @@ struct IntegrationsTab: View {
 
     var body: some View {
         Form {
-            Toggle(isOn: $settings.xcodeIntegrationEnabled) {
-                Text("Xcode")
-                Text("Detect Xcode projects automatically")
+            Section {
+                Toggle(isOn: $settings.xcodeIntegrationEnabled) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Xcode")
+                            Text("Detect Xcode projects automatically")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "hammer.fill")
+                            .foregroundStyle(.blue)
+                    }
+                }
+                Toggle(isOn: $settings.claudeIntegrationEnabled) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Claude")
+                            Text("Auto-launch claude in projects with a CLAUDE.md")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(.orange)
+                    }
+                }
+                Toggle(isOn: $settings.codexIntegrationEnabled) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Codex")
+                            Text("Auto-launch codex in projects with an AGENTS.md")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "chevron.left.forwardslash.chevron.right")
+                            .foregroundStyle(.green)
+                    }
+                }
+            } header: {
+                Text("Auto-launch")
+            } footer: {
+                Text("Notchy starts the selected agent in detected project directories.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Toggle(isOn: $settings.claudeIntegrationEnabled) {
-                Text("Claude")
-                Text("Shows real-time status updates")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+            if settings.claudeIntegrationEnabled && settings.codexIntegrationEnabled {
+                Section {
+                    Picker(selection: $settings.preferredAgent) {
+                        Text("Claude").tag(AgentKind.claude)
+                        Text("Codex").tag(AgentKind.codex)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Preferred agent")
+                            Text("Used when both CLAUDE.md and AGENTS.md are present")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
             }
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 }
 
@@ -115,39 +180,48 @@ struct AboutTab: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 0) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
-                .frame(width: 64, height: 64)
+                .frame(width: 88, height: 88)
+                .padding(.bottom, 12)
 
             Text("Notchy")
-                .font(.title2.bold())
+                .font(.title.bold())
 
             Text(versionString)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
+                .padding(.top, 2)
 
             updateStatusView
+                .padding(.top, 8)
 
-            Button("github.com/bones7456/notchy") {
-                if let url = URL(string: "https://github.com/bones7456/notchy") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-            .buttonStyle(.link)
+            Spacer(minLength: 16)
 
-            HStack(spacing: 4) {
-                Text("Originally by")
-                    .foregroundStyle(.secondary)
-                Button("Adam Lyttle") {
-                    if let url = URL(string: "https://github.com/adamlyttleapps") {
+            VStack(spacing: 4) {
+                Button("github.com/bones7456/notchy") {
+                    if let url = URL(string: "https://github.com/bones7456/notchy") {
                         NSWorkspace.shared.open(url)
                     }
                 }
                 .buttonStyle(.link)
+                .font(.callout)
+
+                HStack(spacing: 4) {
+                    Text("Originally by")
+                        .foregroundStyle(.secondary)
+                    Button("Adam Lyttle") {
+                        if let url = URL(string: "https://github.com/adamlyttleapps") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.link)
+                }
+                .font(.caption)
             }
-            .font(.caption)
         }
+        .padding(.vertical, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             if case .idle = updateChecker.state {
@@ -227,7 +301,7 @@ class SettingsWindowController {
         let hostingView = NSHostingView(rootView: content)
 
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 450, height: 240),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 360),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false

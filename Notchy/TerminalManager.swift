@@ -222,12 +222,12 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
         let newStatus: TerminalStatus
 
-        if Self.hasTokenCounterLine(visibleText) || fullText.contains("esc to interrupt") {
+        if let latestSignal = Self.latestStatusSignal(in: fullText) {
+            newStatus = latestSignal
+        } else if Self.hasTokenCounterLine(visibleText) {
             newStatus = .working
-        }
-        else if fullText.contains("Esc to cancel") || Self.hasUserPrompt(fullText) {
-            newStatus = .waitingForInput
-        } else if visibleText.contains("Interrupted") {
+        } else if visibleText.range(of: "interrupted", options: .caseInsensitive) != nil {
+            // Claude shows "Interrupted"; Codex shows "Conversation interrupted - ..."
             newStatus = .interrupted
         } else {
             newStatus = .idle
@@ -260,20 +260,84 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private static func hasUserPrompt(_ text: String) -> Bool {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         return lines.contains { line in
-            let trimmed = line.drop(while: { $0 == " " })
-            return trimmed.hasPrefix("❯") &&
-                trimmed.dropFirst().first == " " &&
-                trimmed.dropFirst(2).first?.isNumber == true
+            isUserPromptLine(String(line))
         }
     }
 
     private static func hasTokenCounterLine(_ text: String) -> Bool {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         return lines.contains { line in
-            guard let first = line.first, spinnerCharacters.contains(first) else { return false }
-            guard line.dropFirst().first == " " else { return false }
-            return line.contains("…")
+            isTokenCounterLine(String(line))
         }
+    }
+
+    /// Returns the newest visible status signal. This prevents stale prompts
+    /// above newer Codex output from keeping the tab in "waiting" state after
+    /// the user approves a command.
+    private static func latestStatusSignal(in text: String) -> TerminalStatus? {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        for line in lines.reversed() {
+            let line = String(line)
+            if isIdleLine(line) {
+                return .idle
+            }
+            if isWorkingLine(line) || isCodexApprovalConfirmationLine(line) {
+                return .working
+            }
+            if isWaitingLine(line) {
+                return .waitingForInput
+            }
+            if line.range(of: "interrupted", options: .caseInsensitive) != nil {
+                return .interrupted
+            }
+        }
+        return nil
+    }
+
+    private static func isWorkingLine(_ line: String) -> Bool {
+        isTokenCounterLine(line) ||
+            line.range(of: "esc to interrupt", options: .caseInsensitive) != nil
+    }
+
+    private static func isWaitingLine(_ line: String) -> Bool {
+        // Claude shows "Esc to cancel"; Codex shows lowercase "esc to cancel"
+        // on confirm-command prompts.
+        line.range(of: "esc to cancel", options: .caseInsensitive) != nil ||
+            isUserPromptLine(line)
+    }
+
+    private static func isIdleLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed == "Ready" || trimmed == "Agent turn complete" {
+            return true
+        }
+        // Claude idle footer — only shown when not working / not prompting.
+        if trimmed == "? for shortcuts" {
+            return true
+        }
+        // Claude post-task indicator: "* Brewed for 59s"
+        if trimmed.hasPrefix("* Brewed for ") && trimmed.hasSuffix("s") {
+            return true
+        }
+        return false
+    }
+
+    private static func isCodexApprovalConfirmationLine(_ line: String) -> Bool {
+        let lowercased = line.lowercased()
+        return lowercased.contains("you approved") && lowercased.contains(" to run ")
+    }
+
+    private static func isUserPromptLine(_ line: String) -> Bool {
+        let trimmed = line.drop(while: { $0 == " " })
+        return trimmed.hasPrefix("❯") &&
+            trimmed.dropFirst().first == " " &&
+            trimmed.dropFirst(2).first?.isNumber == true
+    }
+
+    private static func isTokenCounterLine(_ line: String) -> Bool {
+        guard let first = line.first, spinnerCharacters.contains(first) else { return false }
+        guard line.dropFirst().first == " " else { return false }
+        return line.contains("…")
     }
 
     // MARK: - IME preedit (marked text)
@@ -414,7 +478,7 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
 
     private var terminals: [UUID: LocalProcessTerminalView] = [:]
 
-    func terminal(for sessionId: UUID, workingDirectory: String, launchClaude: Bool = true) -> LocalProcessTerminalView {
+    func terminal(for sessionId: UUID, workingDirectory: String, launchAgent: Bool = true) -> LocalProcessTerminalView {
         if let existing = terminals[sessionId] {
             return existing
         }
@@ -444,11 +508,12 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
             execName: "-" + (shell as NSString).lastPathComponent
         )
 
-        // cd to working directory, launch claude only if CLAUDE.md exists and integration is enabled
+        // cd to working directory; auto-launch the appropriate AI agent if its
+        // marker file is present and its integration is enabled.
         let escapedDir = shellEscape(workingDirectory)
-        let hasClaude = launchClaude && SettingsManager.shared.claudeIntegrationEnabled && FileManager.default.fileExists(atPath: (workingDirectory as NSString).appendingPathComponent("CLAUDE.md"))
-        if hasClaude {
-            terminal.send(txt: "cd \(escapedDir) && clear && claude\r")
+        let agent: AgentKind = launchAgent ? AgentKind.detect(in: workingDirectory) : .none
+        if let command = agent.commandName {
+            terminal.send(txt: "cd \(escapedDir) && clear && \(command)\r")
         } else {
             terminal.send(txt: "cd \(escapedDir) && clear\r")
         }

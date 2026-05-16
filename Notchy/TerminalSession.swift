@@ -3,14 +3,60 @@ import Foundation
 enum TerminalStatus: Equatable {
     /// Default — no special activity detected
     case idle
-    /// Claude is working (status line matches token counter pattern)
+    /// Agent is working (matches working-state TUI signal, e.g. "esc to interrupt")
     case working
-    /// Claude is waiting for user input ("Esc to cancel")
+    /// Agent is waiting for user input (Claude's "❯ N" choice list, or
+    /// "Esc to cancel" / Codex's "esc to cancel" confirm-command prompt)
     case waitingForInput
-    /// Claude was interrupted by the user (Esc pressed)
+    /// Agent was interrupted by the user (Esc pressed)
     case interrupted
-    /// Claude finished a task (confirmed via idle timer line after working)
+    /// Agent finished a task (confirmed via idle timer line after working)
     case taskCompleted
+}
+
+/// Which AI coding assistant to auto-launch in a session.
+enum AgentKind: String, Equatable {
+    case none
+    case claude
+    case codex
+
+    /// Shell command to invoke after `cd`. nil for `.none`.
+    var commandName: String? {
+        switch self {
+        case .none: return nil
+        case .claude: return "claude"
+        case .codex: return "codex"
+        }
+    }
+
+    /// Marker file the agent looks for at project root.
+    var markerFileName: String? {
+        switch self {
+        case .none: return nil
+        case .claude: return "CLAUDE.md"
+        case .codex: return "AGENTS.md"
+        }
+    }
+
+    /// Picks which agent to auto-launch in a directory based on which marker
+    /// files are present and which integrations are enabled. When both markers
+    /// exist and both integrations are enabled, falls back to the user's
+    /// preferred agent.
+    static func detect(in workingDirectory: String) -> AgentKind {
+        let settings = SettingsManager.shared
+        let dir = workingDirectory as NSString
+        let hasClaude = FileManager.default.fileExists(atPath: dir.appendingPathComponent("CLAUDE.md"))
+        let hasCodex = FileManager.default.fileExists(atPath: dir.appendingPathComponent("AGENTS.md"))
+        let claudeAvailable = settings.claudeIntegrationEnabled && hasClaude
+        let codexAvailable = settings.codexIntegrationEnabled && hasCodex
+
+        switch (claudeAvailable, codexAvailable) {
+        case (true, true): return settings.preferredAgent
+        case (true, false): return .claude
+        case (false, true): return .codex
+        case (false, false): return .none
+        }
+    }
 }
 
 struct TerminalSession: Identifiable {

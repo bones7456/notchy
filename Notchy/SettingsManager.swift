@@ -24,6 +24,17 @@ class SettingsManager {
         didSet { UserDefaults.standard.set(claudeIntegrationEnabled, forKey: "claudeIntegrationEnabled") }
     }
 
+    var codexIntegrationEnabled: Bool {
+        didSet { UserDefaults.standard.set(codexIntegrationEnabled, forKey: "codexIntegrationEnabled") }
+    }
+
+    /// Tiebreaker used when both CLAUDE.md and AGENTS.md exist (and both
+    /// integrations are enabled). Only `.claude` and `.codex` are meaningful;
+    /// `.none` is treated as Claude.
+    var preferredAgent: AgentKind {
+        didSet { UserDefaults.standard.set(preferredAgent.rawValue, forKey: "preferredAgent") }
+    }
+
     var selectionCopyEnabled: Bool {
         didSet { UserDefaults.standard.set(selectionCopyEnabled, forKey: "selectionCopyEnabled") }
     }
@@ -39,6 +50,8 @@ class SettingsManager {
         if defaults.object(forKey: "muteSoundsDuringCalls") == nil { defaults.set(false, forKey: "muteSoundsDuringCalls") }
         if defaults.object(forKey: "xcodeIntegrationEnabled") == nil { defaults.set(true, forKey: "xcodeIntegrationEnabled") }
         if defaults.object(forKey: "claudeIntegrationEnabled") == nil { defaults.set(true, forKey: "claudeIntegrationEnabled") }
+        if defaults.object(forKey: "codexIntegrationEnabled") == nil { defaults.set(true, forKey: "codexIntegrationEnabled") }
+        if defaults.object(forKey: "preferredAgent") == nil { defaults.set(AgentKind.claude.rawValue, forKey: "preferredAgent") }
         if defaults.object(forKey: "selectionCopyEnabled") == nil { defaults.set(true, forKey: "selectionCopyEnabled") }
         if defaults.object(forKey: "externalDisplayTrigger") == nil { defaults.set(false, forKey: "externalDisplayTrigger") }
 
@@ -47,6 +60,8 @@ class SettingsManager {
         muteSoundsDuringCalls = defaults.bool(forKey: "muteSoundsDuringCalls")
         xcodeIntegrationEnabled = defaults.bool(forKey: "xcodeIntegrationEnabled")
         claudeIntegrationEnabled = defaults.bool(forKey: "claudeIntegrationEnabled")
+        codexIntegrationEnabled = defaults.bool(forKey: "codexIntegrationEnabled")
+        preferredAgent = AgentKind(rawValue: defaults.string(forKey: "preferredAgent") ?? "") ?? .claude
         selectionCopyEnabled = defaults.bool(forKey: "selectionCopyEnabled")
         externalDisplayTrigger = defaults.bool(forKey: "externalDisplayTrigger")
     }
