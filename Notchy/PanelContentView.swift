@@ -34,7 +34,8 @@ struct PanelContentView: View {
     @Bindable var sessionStore: SessionStore
     var onClose: () -> Void
     var onToggleExpand: (() -> Void)?
-    @State private var showRestoreConfirmation = false
+    @State private var checkpointPendingRestore: Checkpoint?
+    @State private var showAllCheckpoints = false
 
     private var foregroundOpacity: Double {
         sessionStore.isWindowFocused ? 1.0 : 0.78
@@ -129,72 +130,7 @@ struct PanelContentView: View {
             .background(Color(nsColor: NSColor(white: 0.14, alpha: 1.0)).opacity(chromeBackgroundOpacity))
 
             if sessionStore.isTerminalExpanded, sessionStore.checkpointStatus != nil || sessionStore.lastCheckpoint != nil {
-                HStack(spacing: 6) {
-                    if let status = sessionStore.checkpointStatus {
-                        Image(systemName: "progress.indicator")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text(status)
-                            .font(.system(size: 11, weight: .medium))
-                        Spacer()
-                        Button {
-                            showRestoreConfirmation = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock.arrow.circlepath")
-                                Text("Restore last checkpoint")
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(nsColor: NSColor(white: 0.18, alpha: 1.0)))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.8))
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                        .padding(.trailing, 6)
-                        .opacity(0)
-                        
-                    } else if let checkpoint = sessionStore.lastCheckpoint {
-                        Image(systemName: "bookmark.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("Checkpoint Saved")
-                            .font(.system(size: 11, weight: .medium))
-                        Text(checkpoint.displayName)
-                            .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.5))
-
-                        Spacer()
-
-                        Button {
-                            showRestoreConfirmation = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock.arrow.circlepath")
-                                Text("Restore last checkpoint")
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(nsColor: NSColor(white: 0.18, alpha: 1.0)))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.8))
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                        .padding(.trailing, 6)
-
-                        Button(action: { sessionStore.deleteLastCheckpoint() }) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(.white.opacity(0.4))
-                        .help("Delete this checkpoint")
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color(nsColor: NSColor(white: 0.18, alpha: 1.0)).opacity(chromeBackgroundOpacity))
-                .foregroundColor(.white.opacity(0.8))
+                checkpointBanner
             }
 
             if sessionStore.isTerminalExpanded {
@@ -253,16 +189,26 @@ struct PanelContentView: View {
         .onChange(of: sessionStore.activeSessionId) {
             sessionStore.refreshLastCheckpoint()
         }
-        .onChange(of: showRestoreConfirmation) {
-            sessionStore.isShowingDialog = showRestoreConfirmation
+        .onChange(of: showAllCheckpoints) {
+            sessionStore.isShowingDialog = showAllCheckpoints || checkpointPendingRestore != nil
         }
-        .alert("Restore last checkpoint", isPresented: $showRestoreConfirmation) {
-            Button("Restore last checkpoint", role: .destructive) {
-                sessionStore.restoreLastCheckpoint()
+        .onChange(of: checkpointPendingRestore?.id) {
+            sessionStore.isShowingDialog = showAllCheckpoints || checkpointPendingRestore != nil
+        }
+        .alert(
+            "Restore checkpoint",
+            isPresented: Binding(
+                get: { checkpointPendingRestore != nil },
+                set: { if !$0 { checkpointPendingRestore = nil } }
+            ),
+            presenting: checkpointPendingRestore
+        ) { cp in
+            Button("Restore", role: .destructive) {
+                sessionStore.restoreCheckpoint(cp)
             }
             Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will overwrite your current working directory with the checkpoint. Are you sure?")
+        } message: { cp in
+            Text("This will overwrite your current working directory with the \"\(cp.displayName)\" checkpoint. Are you sure?")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
             if notification.object is TerminalPanel {
@@ -285,5 +231,185 @@ struct PanelContentView: View {
                     .multilineTextAlignment(.center)
                     .opacity(0)
             }
+    }
+
+    @ViewBuilder
+    private var checkpointBanner: some View {
+        HStack(spacing: 6) {
+            if let status = sessionStore.checkpointStatus {
+                checkpointStatusContent(status: status)
+            } else if let checkpoint = sessionStore.lastCheckpoint {
+                checkpointSavedContent(checkpoint: checkpoint)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: NSColor(white: 0.18, alpha: 1.0)).opacity(chromeBackgroundOpacity))
+        .foregroundColor(.white.opacity(0.8))
+    }
+
+    @ViewBuilder
+    private func checkpointStatusContent(status: String) -> some View {
+        Image(systemName: "progress.indicator")
+            .font(.system(size: 10, weight: .semibold))
+        Text(status)
+            .font(.system(size: 11, weight: .medium))
+        Spacer()
+        // Invisible placeholder to keep banner height stable across status/saved states
+        Button(action: {}) {
+            HStack(spacing: 4) {
+                Image(systemName: "clock.arrow.circlepath")
+                Text("Restore last checkpoint")
+            }
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 10, weight: .medium))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .opacity(0)
+    }
+
+    @ViewBuilder
+    private func checkpointSavedContent(checkpoint: Checkpoint) -> some View {
+        Image(systemName: "bookmark.fill")
+            .font(.system(size: 10, weight: .semibold))
+        Text("Checkpoint Saved")
+            .font(.system(size: 11, weight: .medium))
+        Text(checkpoint.displayName)
+            .font(.system(size: 10))
+            .foregroundColor(.white.opacity(0.5))
+
+        Spacer()
+
+        Button {
+            checkpointPendingRestore = checkpoint
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "clock.arrow.circlepath")
+                Text("Restore last checkpoint")
+            }
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 10, weight: .medium))
+        .foregroundColor(Color(nsColor: NSColor(white: 0.18, alpha: 1.0)))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Color.white.opacity(0.8))
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .padding(.trailing, 4)
+
+        Button(action: { showAllCheckpoints.toggle() }) {
+            Image(systemName: "list.bullet")
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.white.opacity(0.55))
+        .help("Show all checkpoints")
+        .popover(isPresented: $showAllCheckpoints, arrowEdge: .top) {
+            CheckpointListPopover(
+                checkpoints: sessionStore.allCheckpoints,
+                onRestore: { cp in
+                    showAllCheckpoints = false
+                    checkpointPendingRestore = cp
+                },
+                onDelete: { cp in
+                    sessionStore.deleteCheckpoint(cp)
+                }
+            )
+        }
+        .padding(.trailing, 2)
+
+        Button(action: { sessionStore.deleteCheckpoint(checkpoint) }) {
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .bold))
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.white.opacity(0.4))
+        .help("Delete this checkpoint")
+    }
+}
+
+struct CheckpointListPopover: View {
+    let checkpoints: [Checkpoint]
+    let onRestore: (Checkpoint) -> Void
+    let onDelete: (Checkpoint) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("All Checkpoints")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary)
+                .textCase(.uppercase)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
+
+            if checkpoints.isEmpty {
+                Text("No checkpoints")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(checkpoints) { cp in
+                            CheckpointListRow(
+                                checkpoint: cp,
+                                onRestore: { onRestore(cp) },
+                                onDelete: { onDelete(cp) }
+                            )
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
+            }
+        }
+        .frame(width: 260)
+        .padding(.bottom, 6)
+        .preferredColorScheme(.dark)
+    }
+}
+
+struct CheckpointListRow: View {
+    let checkpoint: Checkpoint
+    let onRestore: () -> Void
+    let onDelete: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "bookmark.fill")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+            Text(checkpoint.displayName)
+                .font(.system(size: 11))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button(action: onRestore) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Restore this checkpoint")
+
+            Button(action: onDelete) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Delete this checkpoint")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .background(isHovering ? Color.primary.opacity(0.08) : Color.clear)
+        .onHover { isHovering = $0 }
     }
 }

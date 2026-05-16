@@ -34,6 +34,8 @@ class SessionStore {
 
     /// The most recent checkpoint for the active session, used to show the undo button
     var lastCheckpoint: Checkpoint?
+    /// All checkpoints for the active session (newest first). Refreshed alongside `lastCheckpoint`.
+    var allCheckpoints: [Checkpoint] = []
     /// Project name associated with lastCheckpoint
     var lastCheckpointProjectName: String?
     /// Project directory associated with lastCheckpoint
@@ -359,50 +361,36 @@ class SessionStore {
         guard let session = activeSession,
               let dir = session.projectPath else {
             lastCheckpoint = nil
+            allCheckpoints = []
             lastCheckpointProjectName = nil
             lastCheckpointProjectDir = nil
             return
         }
         let projectDir = (dir as NSString).deletingLastPathComponent
         let checkpoints = CheckpointManager.shared.checkpoints(for: session.projectName, in: projectDir)
+        allCheckpoints = checkpoints
         lastCheckpoint = checkpoints.first
         lastCheckpointProjectName = session.projectName
         lastCheckpointProjectDir = projectDir
     }
 
-    /// Delete the most recent checkpoint and surface the next-most-recent one (or hide the banner if none remain)
-    func deleteLastCheckpoint() {
-        guard let checkpoint = lastCheckpoint,
-              let projectName = lastCheckpointProjectName,
-              let projectDir = lastCheckpointProjectDir else {
-            lastCheckpoint = nil
-            return
-        }
+    /// Delete a specific checkpoint for the active session and refresh state
+    func deleteCheckpoint(_ checkpoint: Checkpoint) {
+        guard let session = activeSession,
+              let dir = session.projectPath else { return }
+        let projectDir = (dir as NSString).deletingLastPathComponent
         DispatchQueue.global(qos: .userInitiated).async {
             try? CheckpointManager.shared.deleteCheckpoint(checkpoint, in: projectDir)
-            let remaining = CheckpointManager.shared.checkpoints(for: projectName, in: projectDir)
             DispatchQueue.main.async {
-                self.lastCheckpoint = remaining.first
-                if remaining.isEmpty {
-                    self.lastCheckpointProjectName = nil
-                    self.lastCheckpointProjectDir = nil
-                }
+                self.refreshLastCheckpoint()
             }
         }
     }
 
-    /// Restore the most recent checkpoint for the active session
-    func restoreLastCheckpoint() {
-        guard let checkpoint = lastCheckpoint,
-              let projectDir = lastCheckpointProjectDir else { return }
-        checkpointStatus = "Restoring checkpoint…"
-        DispatchQueue.global(qos: .userInitiated).async {
-            try? CheckpointManager.shared.restoreCheckpoint(checkpoint, to: projectDir)
-            DispatchQueue.main.async {
-                self.checkpointStatus = nil
-                self.lastCheckpoint = nil
-            }
-        }
+    /// Restore a specific checkpoint for the active session
+    func restoreCheckpoint(_ checkpoint: Checkpoint) {
+        guard let id = activeSessionId else { return }
+        restoreCheckpoint(checkpoint, for: id)
     }
 
     /// Create a checkpoint with progress status

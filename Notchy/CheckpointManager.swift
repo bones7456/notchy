@@ -7,7 +7,7 @@ struct Checkpoint: Identifiable {
 
     var displayName: String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "EEE d MMM h:mma"
+        formatter.dateFormat = "EEE d MMM h:mm:ssa"
         return formatter.string(from: date)
     }
 }
