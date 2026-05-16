@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 
 /// An invisible window that sits behind the notch area.
@@ -155,7 +156,7 @@ class NotchWindow: NSPanel {
     }
 
     private func updateExpansionState() {
-        let shouldExpand = NotchDisplayState.current != .idle
+        let shouldExpand = !NotchDisplayState.current.isIdle
 
         if shouldExpand && !isExpanded {
             collapseDebounceTimer?.invalidate()
@@ -169,7 +170,7 @@ class NotchWindow: NSPanel {
                 guard let self else { return }
                 self.collapseDebounceTimer = nil
                 // Re-check — state may have changed during the debounce
-                if NotchDisplayState.current == .idle && self.isExpanded {
+                if NotchDisplayState.current.isIdle && self.isExpanded {
                     self.collapse()
                 }
             }
@@ -205,7 +206,7 @@ class NotchWindow: NSPanel {
         let startTime = CACurrentMediaTime()
         let duration: Double = 0.35
 
-        let displayLink = CVDisplayLinkWrapper { [weak self] in
+        let displayLink = DisplayLinkWrapper(window: self) { [weak self] in
             guard let self else { return false }
             let elapsed = CACurrentMediaTime() - startTime
             let t = min(elapsed / duration, 1.0)
@@ -216,12 +217,10 @@ class NotchWindow: NSPanel {
             let currentX = startFrame.origin.x + (targetFrame.origin.x - startFrame.origin.x) * ease
             let currentWidth = startFrame.width + (targetFrame.width - startFrame.width) * ease
 
-            DispatchQueue.main.async {
-                self.setFrame(
-                    NSRect(x: currentX, y: targetFrame.origin.y, width: currentWidth, height: targetFrame.height),
-                    display: true
-                )
-            }
+            self.setFrame(
+                NSRect(x: currentX, y: targetFrame.origin.y, width: currentWidth, height: targetFrame.height),
+                display: true
+            )
             return t < 1.0
         }
         displayLink.start()
@@ -253,7 +252,7 @@ class NotchWindow: NSPanel {
         let startTime = CACurrentMediaTime()
         let duration: Double = 0.3
 
-        let displayLink = CVDisplayLinkWrapper { [weak self] in
+        let displayLink = DisplayLinkWrapper(window: self) { [weak self] in
             guard let self else { return false }
             let elapsed = CACurrentMediaTime() - startTime
             let t = min(elapsed / duration, 1.0)
@@ -264,15 +263,13 @@ class NotchWindow: NSPanel {
             let currentX = startFrame.origin.x + (targetFrame.origin.x - startFrame.origin.x) * ease
             let currentWidth = startFrame.width + (targetFrame.width - startFrame.width) * ease
 
-            DispatchQueue.main.async {
-                self.setFrame(
-                    NSRect(x: currentX, y: targetFrame.origin.y, width: currentWidth, height: targetFrame.height),
-                    display: true
-                )
-                if t >= 1.0 {
-                    // Show the idle content once collapse animation finishes
-                    self.pillContentHost?.alphaValue = 1
-                }
+            self.setFrame(
+                NSRect(x: currentX, y: targetFrame.origin.y, width: currentWidth, height: targetFrame.height),
+                display: true
+            )
+            if t >= 1.0 {
+                // Show the idle content once collapse animation finishes
+                self.pillContentHost?.alphaValue = 1
             }
             return t < 1.0
         }
@@ -398,14 +395,12 @@ class NotchWindow: NSPanel {
         let targetProtrusion = NotchPillView.earRadius
         let startTime = CACurrentMediaTime()
         let duration: Double = 0.15
-        let displayLink = CVDisplayLinkWrapper { [weak self] in
+        let displayLink = DisplayLinkWrapper(window: self) { [weak self] in
             guard let self else { return false }
             let elapsed = CACurrentMediaTime() - startTime
             let t = min(elapsed / duration, 1.0)
             let protrusion = targetProtrusion * t
-            DispatchQueue.main.async {
-                self.pillView.earProtrusion = protrusion
-            }
+            self.pillView.earProtrusion = protrusion
             return t < 1.0
         }
         displayLink.start()
@@ -578,7 +573,7 @@ class NotchPillView: NSView {
 
 // MARK: - Notch display state
 
-enum NotchDisplayState: Equatable {
+enum NotchDisplayState {
     case idle
     case working
     case waitingForInput
@@ -599,6 +594,22 @@ enum NotchDisplayState: Equatable {
         }
         return .idle
     }
+
+    var isIdle: Bool {
+        if case .idle = self {
+            return true
+        }
+        return false
+    }
+
+    var animationKey: Int {
+        switch self {
+        case .idle: return 0
+        case .working: return 1
+        case .waitingForInput: return 2
+        case .taskCompleted: return 3
+        }
+    }
 }
 
 // MARK: - Notch pill SwiftUI content
@@ -606,12 +617,13 @@ enum NotchDisplayState: Equatable {
 struct NotchPillContent: View {
     var isHovering: Bool = false
     private var displayState: NotchDisplayState { .current }
+    private var displayStateAnimationKey: Int { displayState.animationKey }
 
     var body: some View {
         ZStack {
             HStack {
 
-                if displayState != .idle {
+                if !displayState.isIdle {
 
                     Rectangle()
                         .foregroundColor(.clear)
@@ -647,7 +659,7 @@ struct NotchPillContent: View {
                     }
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: displayState)
+            .animation(.easeInOut(duration: 0.25), value: displayStateAnimationKey)
             .padding(.horizontal, 12 + (isHovering ? NotchPillView.earRadius : 0))
 
             // Debug: show current displayState
@@ -658,7 +670,7 @@ struct NotchPillContent: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
         .offset(y: isHovering ? -3 : -2)
-        .onChange(of: displayState) {
+        .onChange(of: displayStateAnimationKey) {
             NotificationCenter.default.post(name: .NotchyNotchStatusChanged, object: nil)
         }
     }
@@ -677,50 +689,42 @@ struct SpinnerView: View {
     }
 }
 
-// MARK: - CVDisplayLink wrapper for smooth animation
+// MARK: - DisplayLink wrapper for smooth animation
 
 /// Drives a frame-by-frame animation callback on the display refresh rate.
-class CVDisplayLinkWrapper {
-    private var displayLink: CVDisplayLink?
-    private let callback: () -> Bool  // return true to keep running
-    private var stopped = false
+@MainActor
+private final class DisplayLinkWrapper: NSObject {
+    private weak var window: NSWindow?
+    private var displayLink: CADisplayLink?
+    private let callback: @MainActor () -> Bool  // return true to keep running
+    private var isStopped = false
 
-    init(callback: @escaping () -> Bool) {
+    init(window: NSWindow, callback: @escaping @MainActor () -> Bool) {
+        self.window = window
         self.callback = callback
     }
 
     func start() {
-        CVDisplayLinkCreateWithActiveCGDisplays(&displayLink)
-        guard let displayLink else { return }
-
-        let opaqueWrapper = Unmanaged.passRetained(self)
-        CVDisplayLinkSetOutputCallback(displayLink, { (_, _, _, _, _, userInfo) -> CVReturn in
-            guard let userInfo else { return kCVReturnError }
-            let wrapper = Unmanaged<CVDisplayLinkWrapper>.fromOpaque(userInfo).takeUnretainedValue()
-            guard !wrapper.stopped else { return kCVReturnSuccess }
-            let keepRunning = wrapper.callback()
-            if !keepRunning {
-                // Stop immediately on this thread to prevent further callbacks
-                wrapper.stopped = true
-                if let link = wrapper.displayLink {
-                    CVDisplayLinkStop(link)
-                }
-                // Release the retained reference on main
-                DispatchQueue.main.async {
-                    wrapper.displayLink = nil
-                    Unmanaged<CVDisplayLinkWrapper>.fromOpaque(userInfo).release()
-                }
-            }
-            return kCVReturnSuccess
-        }, opaqueWrapper.toOpaque())
-
-        CVDisplayLinkStart(displayLink)
+        guard displayLink == nil, !isStopped, let window else { return }
+        let displayLink = window.displayLink(target: self, selector: #selector(displayLinkDidFire(_:)))
+        self.displayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
     }
 
     func stop() {
-        stopped = true
-        guard let displayLink else { return }
-        CVDisplayLinkStop(displayLink)
-        self.displayLink = nil
+        isStopped = true
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    @objc private func displayLinkDidFire(_ displayLink: CADisplayLink) {
+        guard !isStopped else {
+            stop()
+            return
+        }
+        guard callback() else {
+            stop()
+            return
+        }
     }
 }

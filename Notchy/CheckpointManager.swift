@@ -127,7 +127,7 @@ class CheckpointManager {
     func clearCheckpoints(for projectName: String, in projectDirectory: String) {
         let list = checkpoints(for: projectName, in: projectDirectory)
         for checkpoint in list {
-            try? git(["update-ref", "-d", checkpoint.id], in: projectDirectory)
+            _ = try? git(["update-ref", "-d", checkpoint.id], in: projectDirectory)
         }
     }
 

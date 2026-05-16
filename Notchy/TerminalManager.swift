@@ -5,8 +5,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     var sessionId: UUID?
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
-    private var statusDebounceWork: DispatchWorkItem?
-    private static let statusQueue = DispatchQueue(label: "com.notchy.status", qos: .utility)
+    private var statusTimer: Timer?
     private var selectionCopyDebounceTimer: Timer?
 
     // SwiftTerm's NSTextInputClient implementation drops marked (preedit)
@@ -25,6 +24,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         registerForDraggedTypes([.fileURL])
         installArrowKeyMonitor()
         installScrollMonitor()
+        startStatusTimer()
     }
 
     required init?(coder: NSCoder) {
@@ -32,6 +32,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         registerForDraggedTypes([.fileURL])
         installArrowKeyMonitor()
         installScrollMonitor()
+        startStatusTimer()
     }
 
     deinit {
@@ -41,7 +42,23 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         if let monitor = scrollMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        statusTimer?.invalidate()
         preeditPanel?.orderOut(nil)
+    }
+
+    /// Periodically re-evaluate terminal status on the main thread. Polling
+    /// (rather than reacting to `dataReceived`) avoids two problems: (a) a
+    /// fast-updating spinner like Codex's would starve a trailing-edge
+    /// debounce so it never fires, and (b) SwiftTerm's `Terminal` is
+    /// main-thread-only — reading cells off a background queue can return
+    /// partial or stale data.
+    private func startStatusTimer() {
+        let timer = Timer(timeInterval: 0.3, repeats: true) { [weak self] _ in
+            guard let self, let id = self.sessionId else { return }
+            self.evaluateStatus(for: id)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        statusTimer = timer
     }
 
     /// Intercept arrow key events locally and send standard VT100/xterm sequences
@@ -200,22 +217,6 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         return relevantText(from: lineTexts)
     }
 
-    override func dataReceived(slice: ArraySlice<UInt8>) {
-        super.dataReceived(slice: slice)
-
-        guard let id = sessionId else { return }
-
-        // Debounce status checks on a background queue to avoid
-        // blocking the main thread with per-cell buffer reads.
-        statusDebounceWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.evaluateStatus(for: id)
-        }
-        statusDebounceWork = work
-        Self.statusQueue.asyncAfter(deadline: .now() + 0.15, execute: work)
-    }
-
     private func evaluateStatus(for id: UUID) {
         guard let visibleText = extractVisibleText() else { return }
         let fullText = extractFullVisibleText() ?? visibleText
@@ -234,9 +235,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         }
 
         if !SessionStore.shared.sessions.contains(where: {$0.id == id && $0.terminalStatus == newStatus}) {
-            DispatchQueue.main.async {
-                SessionStore.shared.updateTerminalStatus(id, status: newStatus)
-            }
+            SessionStore.shared.updateTerminalStatus(id, status: newStatus)
         }
     }
 
@@ -296,7 +295,33 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
     private static func isWorkingLine(_ line: String) -> Bool {
         isTokenCounterLine(line) ||
-            line.range(of: "esc to interrupt", options: .caseInsensitive) != nil
+            hasInterruptSignal(line)
+    }
+
+    private static func hasInterruptSignal(_ text: String) -> Bool {
+        normalizedStatusText(text).contains("esc to interrupt")
+    }
+
+    private static func normalizedStatusText(_ text: String) -> String {
+        var normalized = ""
+        var previousWasSpace = false
+
+        for scalar in text.unicodeScalars {
+            let category = scalar.properties.generalCategory
+            if category == .control || category == .format {
+                continue
+            }
+
+            if CharacterSet.alphanumerics.contains(scalar) {
+                normalized.append(String(scalar).lowercased())
+                previousWasSpace = false
+            } else if !previousWasSpace {
+                normalized.append(" ")
+                previousWasSpace = true
+            }
+        }
+
+        return normalized.trimmingCharacters(in: .whitespaces)
     }
 
     private static func isWaitingLine(_ line: String) -> Bool {
