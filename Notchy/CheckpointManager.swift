@@ -130,4 +130,9 @@ class CheckpointManager {
             try? git(["update-ref", "-d", checkpoint.id], in: projectDirectory)
         }
     }
+
+    /// Deletes a single checkpoint by its ref
+    func deleteCheckpoint(_ checkpoint: Checkpoint, in projectDirectory: String) throws {
+        try git(["update-ref", "-d", checkpoint.id], in: projectDirectory)
+    }
 }

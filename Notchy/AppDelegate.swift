@@ -213,7 +213,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !sessionStore.sessions.isEmpty {
             for session in sessionStore.sessions {
                 let item = NSMenuItem(
-                    title: session.projectName,
+                    title: session.displayName,
                     action: #selector(selectSession(_:)),
                     keyEquivalent: ""
                 )

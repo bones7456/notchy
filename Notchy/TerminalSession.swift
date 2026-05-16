@@ -15,7 +15,10 @@ enum TerminalStatus: Equatable {
 
 struct TerminalSession: Identifiable {
     let id: UUID
+    /// Stable identity — matches the Xcode project name. Never mutated by rename.
     var projectName: String
+    /// User-provided display name. Falls back to `projectName` when nil.
+    var customName: String?
     var projectPath: String?
     var workingDirectory: String
     var hasStarted: Bool
@@ -27,9 +30,12 @@ struct TerminalSession: Identifiable {
     /// When the session most recently entered the .working state
     var workingStartedAt: Date?
 
+    var displayName: String { customName ?? projectName }
+
     init(projectName: String, projectPath: String? = nil, workingDirectory: String? = nil, started: Bool = false) {
         self.id = UUID()
         self.projectName = projectName
+        self.customName = nil
         self.projectPath = projectPath
         self.workingDirectory = workingDirectory ?? projectPath ?? NSHomeDirectory()
         self.hasStarted = started
@@ -43,6 +49,7 @@ struct TerminalSession: Identifiable {
     init(persisted: PersistedSession) {
         self.id = persisted.id
         self.projectName = persisted.projectName
+        self.customName = persisted.customName
         self.projectPath = persisted.projectPath
         self.workingDirectory = persisted.workingDirectory
         self.hasStarted = false
@@ -57,6 +64,7 @@ struct TerminalSession: Identifiable {
 struct PersistedSession: Codable {
     let id: UUID
     let projectName: String
+    let customName: String?
     let projectPath: String?
     let workingDirectory: String
 }

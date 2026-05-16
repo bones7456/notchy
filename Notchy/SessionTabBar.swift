@@ -5,13 +5,14 @@ struct SessionTabBar: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(sessionStore.sessions) { session in
+            ForEach(Array(sessionStore.sessions.enumerated()), id: \.element.id) { index, session in
                 SessionTab(
                     session: session,
+                    tabNumber: index + 1,
                     isActive: session.id == sessionStore.activeSessionId,
                     terminalActive: session.hasStarted && sessionStore.activeXcodeProjects.contains(session.projectName),
                     terminalStatus: session.terminalStatus,
-                    foregroundOpacity: sessionStore.isWindowFocused ? 1.0 : 0.6,
+                    foregroundOpacity: sessionStore.isWindowFocused ? 1.0 : 0.78,
                     onSelect: { sessionStore.selectSession(session.id) },
                     onClose: { sessionStore.closeSession(session.id) },
                     onRename: { newName in
@@ -26,6 +27,7 @@ struct SessionTabBar: View {
 
 struct SessionTab: View {
     let session: TerminalSession
+    var tabNumber: Int = 0
     let isActive: Bool
     let terminalActive: Bool
     var terminalStatus: TerminalStatus = .idle
@@ -35,12 +37,10 @@ struct SessionTab: View {
     let onRename: (String) -> Void
 
     @State private var isHovering = false
-    @State private var showRenameDialog = false
-    @State private var renameText = ""
     @State private var latestCheckpoint: Checkpoint?
     @State private var showRestoreConfirmation = false
 
-    private var name: String { session.projectName }
+    private var name: String { session.displayName }
 
     private func refreshLatestCheckpoint() {
         guard let dir = session.projectPath else { return }
@@ -73,6 +73,13 @@ struct SessionTab: View {
         HStack(spacing: 4) {
             statusIndicator
 
+            if tabNumber > 0 && tabNumber <= 9 {
+                Text("\(tabNumber)")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(foregroundOpacity * 0.72))
+                    .frame(minWidth: 10)
+            }
+
             ZStack {
                 // Hidden semibold text prevents tab width change on selection
                 Text(name)
@@ -91,12 +98,12 @@ struct SessionTab: View {
         .background(
             RoundedRectangle(cornerRadius: 6)
                 .fill(isActive
-                    ? Color.accentColor.opacity(0.15)
-                    : isHovering ? Color.white.opacity(0.05) : Color.clear)
+                    ? Color.accentColor.opacity(0.28)
+                    : isHovering ? Color.white.opacity(0.10) : Color.clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(isActive ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
+                .stroke(isActive ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
         )
         .onHover { hovering in
             isHovering = hovering
@@ -127,8 +134,7 @@ struct SessionTab: View {
 //            }
 
             Button("Rename Tab") {
-                renameText = name
-                showRenameDialog = true
+                showRenameAlert()
             }
 
             Button("Close", role: .destructive) {
@@ -155,20 +161,28 @@ struct SessionTab: View {
         } message: {
             Text("This will overwrite your current working directory with the checkpoint. Are you sure?")
         }
-        .alert("Rename Tab", isPresented: $showRenameDialog) {
-            TextField("Tab name", text: $renameText)
-            Button("Rename") {
-                if !renameText.isEmpty {
-                    onRename(renameText)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
-        .onChange(of: showRenameDialog) {
-            SessionStore.shared.isShowingDialog = showRenameDialog || showRestoreConfirmation
-        }
         .onChange(of: showRestoreConfirmation) {
-            SessionStore.shared.isShowingDialog = showRenameDialog || showRestoreConfirmation
+            SessionStore.shared.isShowingDialog = showRestoreConfirmation
+        }
+    }
+
+    private func showRenameAlert() {
+        SessionStore.shared.isShowingDialog = true
+        defer { SessionStore.shared.isShowingDialog = false }
+
+        let alert = NSAlert()
+        alert.messageText = "Rename Tab"
+        alert.informativeText = "Enter a new name for this tab."
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        textField.stringValue = name
+        alert.accessoryView = textField
+        alert.window.initialFirstResponder = textField
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            onRename(textField.stringValue)
         }
     }
 }

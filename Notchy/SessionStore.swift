@@ -105,7 +105,7 @@ class SessionStore {
     }
 
     private func persistSessions() {
-        let persisted = sessions.map { PersistedSession(id: $0.id, projectName: $0.projectName, projectPath: $0.projectPath, workingDirectory: $0.workingDirectory) }
+        let persisted = sessions.map { PersistedSession(id: $0.id, projectName: $0.projectName, customName: $0.customName, projectPath: $0.projectPath, workingDirectory: $0.workingDirectory) }
         if let data = try? JSONEncoder().encode(persisted) {
             UserDefaults.standard.set(data, forKey: Self.sessionsKey)
         }
@@ -231,6 +231,12 @@ class SessionStore {
         selectSession(sessions[prevIndex].id)
     }
 
+    /// Select session by 1-based index (used by Cmd+1..9 hotkeys)
+    func selectSession(at index: Int) {
+        guard index >= 1, index <= sessions.count else { return }
+        selectSession(sessions[index - 1].id)
+    }
+
     /// Select a tab — auto-starts the terminal only if the project's Xcode instance is active
     func selectSession(_ id: UUID) {
         activeSessionId = id
@@ -271,7 +277,9 @@ class SessionStore {
 
     func renameSession(_ id: UUID, to newName: String) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
-        sessions[index].projectName = newName
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Clear the override when the user types back the original name
+        sessions[index].customName = (trimmed.isEmpty || trimmed == sessions[index].projectName) ? nil : trimmed
         persistSessions()
     }
 
@@ -360,6 +368,27 @@ class SessionStore {
         lastCheckpoint = checkpoints.first
         lastCheckpointProjectName = session.projectName
         lastCheckpointProjectDir = projectDir
+    }
+
+    /// Delete the most recent checkpoint and surface the next-most-recent one (or hide the banner if none remain)
+    func deleteLastCheckpoint() {
+        guard let checkpoint = lastCheckpoint,
+              let projectName = lastCheckpointProjectName,
+              let projectDir = lastCheckpointProjectDir else {
+            lastCheckpoint = nil
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            try? CheckpointManager.shared.deleteCheckpoint(checkpoint, in: projectDir)
+            let remaining = CheckpointManager.shared.checkpoints(for: projectName, in: projectDir)
+            DispatchQueue.main.async {
+                self.lastCheckpoint = remaining.first
+                if remaining.isEmpty {
+                    self.lastCheckpointProjectName = nil
+                    self.lastCheckpointProjectDir = nil
+                }
+            }
+        }
     }
 
     /// Restore the most recent checkpoint for the active session

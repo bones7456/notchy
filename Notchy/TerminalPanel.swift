@@ -319,6 +319,24 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
             sessionStore.createQuickSession()
             return true
         }
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "w" {
+            if let activeId = sessionStore.activeSessionId {
+                sessionStore.closeSession(activeId)
+            }
+            return true
+        }
+        // Cmd+1..9: jump to tab N (ignored if N exceeds session count)
+        let cmdOnly = event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command
+        if cmdOnly,
+           let chars = event.charactersIgnoringModifiers,
+           chars.count == 1,
+           let digit = Int(chars),
+           digit >= 1, digit <= 9 {
+            if digit <= sessionStore.sessions.count {
+                sessionStore.selectSession(at: digit)
+                return true
+            }
+        }
         // Ctrl+Tab / Ctrl+Shift+Tab: cycle sessions
         if event.keyCode == 48 && event.modifierFlags.contains(.control) {
             if event.modifierFlags.contains(.shift) {

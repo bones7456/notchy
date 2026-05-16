@@ -37,7 +37,7 @@ struct PanelContentView: View {
     @State private var showRestoreConfirmation = false
 
     private var foregroundOpacity: Double {
-        sessionStore.isWindowFocused ? 1.0 : 0.6
+        sessionStore.isWindowFocused ? 1.0 : 0.78
     }
 
     /// When expanded + unfocused, make chrome backgrounds semi-transparent
@@ -48,9 +48,9 @@ struct PanelContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top spacing so content clears the rounded corner area
+            // Black top border — blends seamlessly into the MacBook notch
             Rectangle()
-                .fill(Color.clear)
+                .fill(Color.black)
                 .frame(height: 6)
 
             // Top bar: tabs + controls
@@ -126,7 +126,7 @@ struct PanelContentView: View {
                 .padding(.trailing, -10)
             }
             .padding(.horizontal, 12)
-            .background(Color.white.opacity(0.06))
+            .background(Color(nsColor: NSColor(white: 0.14, alpha: 1.0)).opacity(chromeBackgroundOpacity))
 
             if sessionStore.isTerminalExpanded, sessionStore.checkpointStatus != nil || sessionStore.lastCheckpoint != nil {
                 HStack(spacing: 6) {
@@ -182,17 +182,18 @@ struct PanelContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 5))
                         .padding(.trailing, 6)
 
-                        Button(action: { sessionStore.lastCheckpoint = nil }) {
+                        Button(action: { sessionStore.deleteLastCheckpoint() }) {
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .bold))
                         }
                         .buttonStyle(.plain)
                         .foregroundColor(.white.opacity(0.4))
+                        .help("Delete this checkpoint")
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color.white.opacity(0.04))
+                .background(Color(nsColor: NSColor(white: 0.18, alpha: 1.0)).opacity(chromeBackgroundOpacity))
                 .foregroundColor(.white.opacity(0.8))
             }
 
