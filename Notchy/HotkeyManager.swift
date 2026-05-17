@@ -162,7 +162,7 @@ final class HotkeyManager {
         )
         guard handlerStatus == noErr else { return false }
 
-        var hotKeyID = EventHotKeyID(signature: 0x4E544359, id: 1)
+        let hotKeyID = EventHotKeyID(signature: 0x4E544359, id: 1)
         let regStatus = RegisterEventHotKey(
             50, UInt32(controlKey), hotKeyID,
             GetApplicationEventTarget(), 0, &carbonHotkeyRef
