@@ -6,6 +6,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
     private var statusTimer: Timer?
+    private var hasNewData = false
     private var selectionCopyDebounceTimer: Timer?
 
     // SwiftTerm's NSTextInputClient implementation drops marked (preedit)
@@ -46,15 +47,19 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         preeditPanel?.orderOut(nil)
     }
 
-    /// Periodically re-evaluate terminal status on the main thread. Polling
-    /// (rather than reacting to `dataReceived`) avoids two problems: (a) a
+    /// Periodically re-evaluate terminal status on the main thread, but only
+    /// on ticks where `dataReceived` has signaled new output. Polling (rather
+    /// than firing directly from `dataReceived`) avoids two problems: (a) a
     /// fast-updating spinner like Codex's would starve a trailing-edge
     /// debounce so it never fires, and (b) SwiftTerm's `Terminal` is
     /// main-thread-only — reading cells off a background queue can return
-    /// partial or stale data.
+    /// partial or stale data. The `hasNewData` gate keeps idle ticks free so
+    /// we don't walk the whole cell grid every 300ms forever.
     private func startStatusTimer() {
         let timer = Timer(timeInterval: 0.3, repeats: true) { [weak self] _ in
             guard let self, let id = self.sessionId else { return }
+            guard self.hasNewData else { return }
+            self.hasNewData = false
             self.evaluateStatus(for: id)
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -217,6 +222,11 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         return relevantText(from: lineTexts)
     }
 
+    override func dataReceived(slice: ArraySlice<UInt8>) {
+        super.dataReceived(slice: slice)
+        hasNewData = true
+    }
+
     private func evaluateStatus(for id: UUID) {
         guard let visibleText = extractVisibleText() else { return }
         let fullText = extractFullVisibleText() ?? visibleText
@@ -295,33 +305,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
     private static func isWorkingLine(_ line: String) -> Bool {
         isTokenCounterLine(line) ||
-            hasInterruptSignal(line)
-    }
-
-    private static func hasInterruptSignal(_ text: String) -> Bool {
-        normalizedStatusText(text).contains("esc to interrupt")
-    }
-
-    private static func normalizedStatusText(_ text: String) -> String {
-        var normalized = ""
-        var previousWasSpace = false
-
-        for scalar in text.unicodeScalars {
-            let category = scalar.properties.generalCategory
-            if category == .control || category == .format {
-                continue
-            }
-
-            if CharacterSet.alphanumerics.contains(scalar) {
-                normalized.append(String(scalar).lowercased())
-                previousWasSpace = false
-            } else if !previousWasSpace {
-                normalized.append(" ")
-                previousWasSpace = true
-            }
-        }
-
-        return normalized.trimmingCharacters(in: .whitespaces)
+            line.range(of: "esc to interrupt", options: .caseInsensitive) != nil
     }
 
     private static func isWaitingLine(_ line: String) -> Bool {
@@ -520,7 +504,7 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         } else {
             terminal.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         }
-        terminal.nativeBackgroundColor = NSColor(white: 0.05, alpha: 0.6)
+        terminal.nativeBackgroundColor = NSColor(white: 0.05, alpha: 1.0)
         terminal.nativeForegroundColor = NSColor(white: 0.95, alpha: 1.0)
 
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
