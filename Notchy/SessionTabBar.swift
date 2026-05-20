@@ -42,6 +42,14 @@ struct SessionTab: View {
 
     private var name: String { session.displayName }
 
+    private var kindBorderColor: Color {
+        switch session.kind {
+        case .xcode: return Color.cyan.opacity(0.45)
+        case .pinned: return Color.orange.opacity(0.55)
+        case .normal: return Color.clear
+        }
+    }
+
     private func refreshLatestCheckpoint() {
         guard let dir = session.projectPath else { return }
         let projectDir = (dir as NSString).deletingLastPathComponent
@@ -105,6 +113,10 @@ struct SessionTab: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(isActive ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(kindBorderColor, lineWidth: 0.5)
+        )
         .onHover { hovering in
             isHovering = hovering
             if hovering {
@@ -116,22 +128,15 @@ struct SessionTab: View {
         .onTapGesture(perform: onSelect)
         .overlay(MiddleClickView { onClose() })
         .contextMenu {
-//            Button("Save Checkpoint") {
-//                SessionStore.shared.createCheckpointForActiveSession()
-//            }
-//            .disabled(session.projectPath == nil)
-//
-//            if latestCheckpoint != nil {
-//                Button("Restore Last Checkpoint") {
-//                    showRestoreConfirmation = true
-//                }
-//            }
-//
-//            Divider()
-        
-//            Button("Refresh") {
-//                SessionStore.shared.restartSession(session.id)
-//            }
+            if session.kind == .normal {
+                Button("Pin Tab") {
+                    SessionStore.shared.setPinned(session.id, pinned: true)
+                }
+            } else if session.kind == .pinned {
+                Button("Unpin Tab") {
+                    SessionStore.shared.setPinned(session.id, pinned: false)
+                }
+            }
 
             Button("Rename Tab") {
                 showRenameAlert()

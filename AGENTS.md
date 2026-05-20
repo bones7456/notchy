@@ -60,6 +60,8 @@ AI agent auto-launch is marker-file based:
 
 This app currently detects `AGENTS.md` for Codex auto-launch, not `AGENT.md`.
 
+Tabs carry a `TabKind` (`.xcode`, `.pinned`, `.normal`). Persistence in `SessionStore.persistSessions` filters out `.normal`, so only `.xcode` and `.pinned` survive a relaunch. Pinning a `.normal` tab captures the shell's CWD via `proc_pidinfo(PROC_PIDVNODEPATHINFO, ...)` on `LocalProcess.shellPid`, so pinned tabs restore their directory without requiring OSC 7. Agent auto-launch fires for `.xcode` tabs and for any `.pinned` tab regardless of whether `projectPath` is set — see the `launchAgent:` parameter in `PanelContentView`.
+
 Terminal status is inferred by reading visible SwiftTerm buffer lines. If adding or changing status values, update `TerminalStatus`, `ClickThroughTerminalView.evaluateStatus`, `SessionStore.updateTerminalStatus`, `NotchDisplayState`, `SessionTab`, and `NotchPillContent` together.
 
 The notch status is aggregate and priority-based: task completed, waiting for input, working, then idle. Keep this behavior predictable because it drives both the notch animation and tab indicators.

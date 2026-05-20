@@ -12,8 +12,19 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **Xcode project detection** — automatically discovers open Xcode projects and `cd`s into them
 - **AI agent auto-launch** — starts `claude` for projects with `CLAUDE.md`, or `codex` for projects with `AGENTS.md`
 - **Multi-session tabs** — run multiple Claude Code or Codex sessions side by side
+- **Pin tabs to persist** — right-click a `+` tab → **Pin Tab** to keep it across app restarts; Notchy remembers the tab's working directory and re-runs agent auto-launch on relaunch
 - **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
 - **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes
+
+### Tab kinds
+
+Each tab has one of three kinds, indicated by a subtle border color:
+
+- **Xcode tab** (cyan border) — auto-created when Xcode opens a project; tied to that project's lifecycle. Closing it suppresses re-creation until you close and reopen the project in Xcode (or restart Notchy).
+- **Pinned tab** (orange border) — a `+` tab you explicitly pinned. Persists across launches together with its captured working directory; on restart, Notchy `cd`s back and re-runs CLAUDE.md/AGENTS.md detection.
+- **Plain `+` tab** (no border) — ephemeral. Stays around for the current session but is dropped on app restart. Pin it if you want it to stick.
+
+> Caveat: closing a tab only suppresses it within the current Notchy session — closing and reopening the floating panel, or restarting Notchy, will bring back any Xcode tab whose project is still open.
 
 ## Requirements
 

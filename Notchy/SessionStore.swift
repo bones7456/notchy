@@ -107,7 +107,10 @@ class SessionStore {
     }
 
     private func persistSessions() {
-        let persisted = sessions.map { PersistedSession(id: $0.id, projectName: $0.projectName, customName: $0.customName, projectPath: $0.projectPath, workingDirectory: $0.workingDirectory) }
+        // Normal "+" tabs are ephemeral by design — only xcode and pinned tabs survive a restart.
+        let persisted = sessions
+            .filter { $0.kind != .normal }
+            .map { PersistedSession(id: $0.id, projectName: $0.projectName, customName: $0.customName, projectPath: $0.projectPath, workingDirectory: $0.workingDirectory, kind: $0.kind) }
         if let data = try? JSONEncoder().encode(persisted) {
             UserDefaults.standard.set(data, forKey: Self.sessionsKey)
         }
@@ -194,7 +197,8 @@ class SessionStore {
                 projectName: project.name,
                 projectPath: project.path,
                 workingDirectory: project.directoryPath,
-                started: false
+                started: false,
+                kind: .xcode
             )
             sessions.append(session)
         }
@@ -270,10 +274,31 @@ class SessionStore {
     func createQuickSession() {
         let session = TerminalSession(
             projectName: "Terminal",
-            started: true
+            started: true,
+            kind: .normal
         )
         sessions.append(session)
         activeSessionId = session.id
+        persistSessions()
+    }
+
+    /// Pin a `.normal` tab so it persists across launches, or unpin a `.pinned`
+    /// tab back to ephemeral. `.xcode` tabs are not affected.
+    func setPinned(_ id: UUID, pinned: Bool) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let current = sessions[index].kind
+        if pinned, current == .normal {
+            // Snapshot the shell's actual CWD so we cd back to it on restart,
+            // even if the user never set up shell integration (OSC 7).
+            if let cwd = TerminalManager.shared.currentWorkingDirectory(for: id) {
+                sessions[index].workingDirectory = cwd
+            }
+            sessions[index].kind = .pinned
+        } else if !pinned, current == .pinned {
+            sessions[index].kind = .normal
+        } else {
+            return
+        }
         persistSessions()
     }
 
@@ -452,8 +477,8 @@ class SessionStore {
         sessions[index].generation += 1
     }
 
-    func closeSession(_ id: UUID) {
-        if let session = sessions.first(where: { $0.id == id }) {
+    func closeSession(_ id: UUID, dismissed: Bool = true) {
+        if dismissed, let session = sessions.first(where: { $0.id == id }) {
             dismissedProjects[session.projectName] = false
         }
         TerminalManager.shared.destroyTerminal(for: id)

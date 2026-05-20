@@ -142,7 +142,7 @@ struct PanelContentView: View {
                         TerminalSessionView(
                             sessionId: session.id,
                             workingDirectory: session.workingDirectory,
-                            launchAgent: session.projectPath != nil,
+                            launchAgent: session.projectPath != nil || session.kind == .pinned,
                             generation: session.generation
                         )
                     } else if session.projectPath != nil && !sessionStore.activeXcodeProjects.contains(session.projectName) {

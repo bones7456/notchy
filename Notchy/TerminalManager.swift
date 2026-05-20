@@ -546,7 +546,13 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         }
     }
 
-    func processTerminated(source: TerminalView, exitCode: Int32?) {}
+    func processTerminated(source: TerminalView, exitCode: Int32?) {
+        guard let terminal = source as? ClickThroughTerminalView,
+              let sessionId = terminal.sessionId else { return }
+        DispatchQueue.main.async {
+            SessionStore.shared.closeSession(sessionId, dismissed: false)
+        }
+    }
 
     /// Returns the visible text from a terminal's buffer
     func visibleText(for sessionId: UUID) -> String? {
@@ -556,6 +562,23 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
 
     func destroyTerminal(for sessionId: UUID) {
         terminals.removeValue(forKey: sessionId)
+    }
+
+    /// Returns the current working directory of the shell for a session by reading
+    /// the process's CWD via proc_pidinfo — no shell integration required.
+    func currentWorkingDirectory(for sessionId: UUID) -> String? {
+        guard let terminal = terminals[sessionId] as? ClickThroughTerminalView else { return nil }
+        let pid = terminal.process.shellPid
+        guard pid > 0 else { return nil }
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        let ret = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size)
+        guard ret > 0 else { return nil }
+        return withUnsafeBytes(of: info.pvi_cdir.vip_path) { ptr -> String? in
+            guard let base = ptr.baseAddress?.assumingMemoryBound(to: CChar.self) else { return nil }
+            let s = String(cString: base)
+            return s.isEmpty ? nil : s
+        }
     }
 
     private func buildEnvironment() -> [String] {

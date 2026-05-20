@@ -14,6 +14,16 @@ enum TerminalStatus: Equatable {
     case taskCompleted
 }
 
+/// Visual/semantic category for a tab. Mutually exclusive.
+enum TabKind: String, Codable {
+    /// Auto-created from Xcode detection. Implicitly anchored to its Xcode project.
+    case xcode
+    /// User-pinned tab. Persists across launches and re-runs cd + agent detection when selected.
+    case pinned
+    /// Ephemeral "+" tab. Not persisted across launches.
+    case normal
+}
+
 /// Which AI coding assistant to auto-launch in a session.
 enum AgentKind: String, Equatable {
     case none
@@ -75,10 +85,11 @@ struct TerminalSession: Identifiable {
     let createdAt: Date
     /// When the session most recently entered the .working state
     var workingStartedAt: Date?
+    var kind: TabKind
 
     var displayName: String { customName ?? projectName }
 
-    init(projectName: String, projectPath: String? = nil, workingDirectory: String? = nil, started: Bool = false) {
+    init(projectName: String, projectPath: String? = nil, workingDirectory: String? = nil, started: Bool = false, kind: TabKind = .normal) {
         self.id = UUID()
         self.projectName = projectName
         self.customName = nil
@@ -89,6 +100,7 @@ struct TerminalSession: Identifiable {
         self.generation = 0
         self.hasBeenSelected = started // if started immediately (e.g. "+" button), mark as selected
         self.createdAt = Date()
+        self.kind = kind
     }
 
     /// Restore a session from persisted data
@@ -103,6 +115,8 @@ struct TerminalSession: Identifiable {
         self.generation = 0
         self.hasBeenSelected = false
         self.createdAt = Date()
+        // Migration: older persisted records have no kind — infer from projectPath
+        self.kind = persisted.kind ?? (persisted.projectPath != nil ? .xcode : .normal)
     }
 }
 
@@ -113,4 +127,5 @@ struct PersistedSession: Codable {
     let customName: String?
     let projectPath: String?
     let workingDirectory: String
+    let kind: TabKind?
 }
