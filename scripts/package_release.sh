@@ -25,6 +25,12 @@ set -euo pipefail
 #                           skipped with a warning.
 #   SPARKLE_VERSION         Optional. Sparkle release tag to download tools
 #                           from. Defaults to 2.9.2.
+#   SPARKLE_RELEASE_NOTES_FILE
+#                           Optional. Path to an HTML file with rendered
+#                           release notes. When set, its content is inlined
+#                           into appcast.xml as <description><![CDATA[...]]>
+#                           so the Sparkle prompt displays the notes
+#                           directly instead of loading an external URL.
 #
 # Behavior:
 #   - If SIGNING_IDENTITY is unset, the .app is built but left ad-hoc-signed
@@ -220,6 +226,11 @@ if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
     ZIP_URL="https://github.com/bones7456/notchy/releases/download/v${MARKETING_VERSION}/${BASENAME}.zip"
     MIN_OS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$BUILT_APP/Contents/Info.plist" 2>/dev/null || echo "")"
 
+    NOTES_HTML=""
+    if [ -n "${SPARKLE_RELEASE_NOTES_FILE:-}" ] && [ -f "$SPARKLE_RELEASE_NOTES_FILE" ]; then
+        NOTES_HTML="$(cat "$SPARKLE_RELEASE_NOTES_FILE")"
+    fi
+
     echo "==> Writing $APPCAST_PATH"
     {
         printf '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -231,7 +242,12 @@ if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
         printf '            <title>Version %s</title>\n' "$MARKETING_VERSION"
         printf '            <sparkle:version>%s</sparkle:version>\n' "$MARKETING_VERSION"
         printf '            <sparkle:shortVersionString>%s</sparkle:shortVersionString>\n' "$MARKETING_VERSION"
-        printf '            <sparkle:releaseNotesLink>https://github.com/bones7456/notchy/releases/tag/v%s</sparkle:releaseNotesLink>\n' "$MARKETING_VERSION"
+        if [ -n "$NOTES_HTML" ]; then
+            printf '            <description><![CDATA[\n'
+            printf '%s' "$NOTES_HTML"
+            printf '\n]]></description>\n'
+        fi
+        printf '            <sparkle:fullReleaseNotesLink>https://github.com/bones7456/notchy/releases/tag/v%s</sparkle:fullReleaseNotesLink>\n' "$MARKETING_VERSION"
         printf '            <pubDate>%s</pubDate>\n' "$PUB_DATE"
         if [ -n "$MIN_OS" ]; then
             printf '            <sparkle:minimumSystemVersion>%s</sparkle:minimumSystemVersion>\n' "$MIN_OS"

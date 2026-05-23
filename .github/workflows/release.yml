@@ -57,9 +57,6 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
 
-      - name: Build, sign, notarize, and package
-        run: ./scripts/package_release.sh
-
       - name: Resolve tag
         id: resolve_tag
         run: |
@@ -69,14 +66,42 @@ jobs:
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload artifacts to GitHub Release
+      - name: Generate release notes
+        id: notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.resolve_tag.outputs.tag }}
         run: |
           set -euo pipefail
+          NOTES_MD="$RUNNER_TEMP/release_notes.md"
+          NOTES_HTML="$RUNNER_TEMP/release_notes.html"
+
+          gh api -X POST "/repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="$TAG" \
+            --jq .body > "$NOTES_MD"
+
+          gh api -X POST /markdown \
+            -F text=@"$NOTES_MD" \
+            -f mode=gfm \
+            -f context="${{ github.repository }}" > "$NOTES_HTML"
+
+          echo "notes_md=$NOTES_MD" >> "$GITHUB_OUTPUT"
+          echo "notes_html=$NOTES_HTML" >> "$GITHUB_OUTPUT"
+
+      - name: Build, sign, notarize, and package
+        env:
+          SPARKLE_RELEASE_NOTES_FILE: ${{ steps.notes.outputs.notes_html }}
+        run: ./scripts/package_release.sh
+
+      - name: Upload artifacts to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.resolve_tag.outputs.tag }}
+          NOTES_MD: ${{ steps.notes.outputs.notes_md }}
+        run: |
+          set -euo pipefail
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "Notchy $TAG" --generate-notes
+            gh release create "$TAG" --title "Notchy $TAG" --notes-file "$NOTES_MD"
           fi
           ASSETS=(dist/Notchy-*.zip dist/Notchy-*.dmg)
           if [ -f dist/appcast.xml ]; then
