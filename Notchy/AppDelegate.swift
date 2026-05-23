@@ -33,6 +33,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         observeScreenChanges()
         // Detect in background so launch isn't blocked
         sessionStore.detectAllXcodeProjectsAsync()
+        // Boot Sparkle so the scheduled background check runs
+        _ = UpdaterController.shared
     }
 
     private func setupStatusItem() {
@@ -242,6 +244,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        let checkUpdatesItem = NSMenuItem(
+            title: "Check for Updates\u{2026}",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        )
+        checkUpdatesItem.target = self
+        menu.addItem(checkUpdatesItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
@@ -301,6 +311,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func createNewSession() {
         sessionStore.createQuickSession()
         showPanelBelowStatusItem()
+    }
+
+    @objc private func checkForUpdates() {
+        UpdaterController.shared.checkForUpdates()
     }
 
     // MARK: - External display management

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		BD0000030000000000000003 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = BD0000020000000000000002 /* SwiftTerm */; };
+		BD0000060000000000000006 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = BD0000050000000000000005 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BD0000030000000000000003 /* SwiftTerm in Frameworks */,
+				BD0000060000000000000006 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +73,7 @@
 			name = Notchy;
 			packageProductDependencies = (
 				BD0000020000000000000002 /* SwiftTerm */,
+				BD0000050000000000000005 /* Sparkle */,
 			);
 			productName = Notchy;
 			productReference = 31844E332F7210B20074F7B7 /* Notchy.app */;
@@ -102,6 +105,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				BD0000010000000000000001 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				BD0000040000000000000004 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 31844E342F7210B20074F7B7 /* Products */;
@@ -275,6 +279,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Notchy/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Notchy;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -285,7 +290,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.2.2;
+				MARKETING_VERSION = 1.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = li.luy.notchy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -314,6 +319,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Notchy/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Notchy;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -324,7 +330,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.2.2;
+				MARKETING_VERSION = 1.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = li.luy.notchy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -369,6 +375,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		BD0000040000000000000004 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -376,6 +390,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BD0000010000000000000001 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
 			productName = SwiftTerm;
+		};
+		BD0000050000000000000005 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BD0000040000000000000004 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

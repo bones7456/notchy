@@ -167,7 +167,8 @@ struct IntegrationsTab: View {
 }
 
 struct AboutTab: View {
-    @State private var updateChecker = UpdateChecker.shared
+    private let updater = UpdaterController.shared
+    @State private var automaticChecks: Bool = UpdaterController.shared.automaticallyChecksForUpdates
 
     private var versionString: String {
         let info = Bundle.main.infoDictionary
@@ -194,8 +195,8 @@ struct AboutTab: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)
 
-            updateStatusView
-                .padding(.top, 8)
+            updateControls
+                .padding(.top, 12)
 
             Spacer(minLength: 16)
 
@@ -223,64 +224,22 @@ struct AboutTab: View {
         }
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
-            if case .idle = updateChecker.state {
-                await updateChecker.check()
-            }
-        }
     }
 
     @ViewBuilder
-    private var updateStatusView: some View {
-        switch updateChecker.state {
-        case .idle:
-            Button("Check for Updates") {
-                Task { await updateChecker.check() }
+    private var updateControls: some View {
+        VStack(spacing: 6) {
+            Button("Check for Updates…") {
+                updater.checkForUpdates()
             }
-            .font(.caption)
-        case .checking:
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Checking for updates…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        case .upToDate:
-            HStack(spacing: 6) {
-                Text("You're on the latest version.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Check Again") {
-                    Task { await updateChecker.check() }
-                }
-                .buttonStyle(.link)
+            .controlSize(.regular)
+
+            Toggle("Automatically check for updates", isOn: $automaticChecks)
+                .toggleStyle(.checkbox)
                 .font(.caption)
-            }
-        case .updateAvailable(let latest, _, let url):
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.down.circle.fill")
-                    .foregroundStyle(.tint)
-                Text("New version \(latest) available")
-                    .font(.caption)
-                Button("View Release") {
-                    NSWorkspace.shared.open(url)
+                .onChange(of: automaticChecks) { _, newValue in
+                    updater.automaticallyChecksForUpdates = newValue
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-            }
-        case .failed(let message):
-            HStack(spacing: 6) {
-                Text("Update check failed: \(message)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Button("Retry") {
-                    Task { await updateChecker.check() }
-                }
-                .buttonStyle(.link)
-                .font(.caption)
-            }
         }
     }
 }

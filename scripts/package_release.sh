@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build, notarize, and package Notchy.app into a ZIP and a DMG.
+# Build, notarize, and package Notchy.app into a ZIP and a DMG, and (if a
+# Sparkle private key is available) emit a signed appcast.xml that Sparkle
+# can consume for in-app updates.
+#
 # Signing happens inside build_app.sh: when SIGNING_IDENTITY is set, it
 # archives with Developer ID Application and the .app is copied straight
 # out of the .xcarchive (Xcode 26's exportArchive is unreliable when
@@ -16,6 +19,12 @@ set -euo pipefail
 #   APPLE_APP_PASSWORD      App-specific password (required for notarization)
 #   APPLE_TEAM_ID           Developer Team ID (required for notarization)
 #   SKIP_NOTARIZE           Set to "1" to sign but skip notarization.
+#   SPARKLE_PRIVATE_KEY     EdDSA private key (base64, single line) used by
+#                           Sparkle's sign_update. When set, the script
+#                           generates dist/appcast.xml; otherwise it is
+#                           skipped with a warning.
+#   SPARKLE_VERSION         Optional. Sparkle release tag to download tools
+#                           from. Defaults to 2.9.2.
 #
 # Behavior:
 #   - If SIGNING_IDENTITY is unset, the .app is built but left ad-hoc-signed
@@ -115,6 +124,75 @@ rm -f "$ZIP_PATH" "$DMG_PATH"
 cp "$STAGED_ZIP" "$ZIP_PATH"
 cp "$STAGED_DMG" "$DMG_PATH"
 
+APPCAST_PATH="$DIST_DIR/appcast.xml"
+rm -f "$APPCAST_PATH"
+
+if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
+    SPARKLE_VERSION="${SPARKLE_VERSION:-2.9.2}"
+    SPARKLE_TOOLS_DIR="$STAGE_DIR/sparkle-tools"
+    SPARKLE_ARCHIVE="$STAGE_DIR/Sparkle-${SPARKLE_VERSION}.tar.xz"
+    SPARKLE_URL="https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+
+    echo "==> Fetching Sparkle ${SPARKLE_VERSION} tools"
+    rm -rf "$SPARKLE_TOOLS_DIR"
+    mkdir -p "$SPARKLE_TOOLS_DIR"
+    curl -fsSL "$SPARKLE_URL" -o "$SPARKLE_ARCHIVE"
+    tar -xJf "$SPARKLE_ARCHIVE" -C "$SPARKLE_TOOLS_DIR"
+    SIGN_UPDATE="$SPARKLE_TOOLS_DIR/bin/sign_update"
+    if [ ! -x "$SIGN_UPDATE" ]; then
+        echo "sign_update not found in Sparkle archive" >&2
+        exit 1
+    fi
+
+    echo "==> Signing $ZIP_PATH with Sparkle EdDSA key"
+    SPARKLE_KEY_FILE="$STAGE_DIR/sparkle_ed_private.key"
+    umask 077
+    printf '%s' "$SPARKLE_PRIVATE_KEY" > "$SPARKLE_KEY_FILE"
+    SIGN_OUTPUT="$("$SIGN_UPDATE" -f "$SPARKLE_KEY_FILE" "$ZIP_PATH")"
+    rm -f "$SPARKLE_KEY_FILE"
+
+    # sign_update emits e.g.:
+    #   sparkle:edSignature="<base64>" length="<bytes>"
+    ED_SIGNATURE="$(printf '%s' "$SIGN_OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')"
+    ZIP_LENGTH="$(printf '%s' "$SIGN_OUTPUT" | sed -n 's/.*length="\([^"]*\)".*/\1/p')"
+    if [ -z "$ED_SIGNATURE" ] || [ -z "$ZIP_LENGTH" ]; then
+        echo "Failed to parse sign_update output: $SIGN_OUTPUT" >&2
+        exit 1
+    fi
+
+    PUB_DATE="$(LC_ALL=C TZ=GMT date '+%a, %d %b %Y %H:%M:%S %z')"
+    ZIP_URL="https://github.com/bones7456/notchy/releases/download/v${MARKETING_VERSION}/${BASENAME}.zip"
+    MIN_OS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$BUILT_APP/Contents/Info.plist" 2>/dev/null || echo "")"
+
+    echo "==> Writing $APPCAST_PATH"
+    {
+        printf '<?xml version="1.0" encoding="utf-8"?>\n'
+        printf '<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">\n'
+        printf '    <channel>\n'
+        printf '        <title>Notchy</title>\n'
+        printf '        <link>https://github.com/bones7456/notchy</link>\n'
+        printf '        <item>\n'
+        printf '            <title>Version %s</title>\n' "$MARKETING_VERSION"
+        printf '            <sparkle:version>%s</sparkle:version>\n' "$MARKETING_VERSION"
+        printf '            <sparkle:shortVersionString>%s</sparkle:shortVersionString>\n' "$MARKETING_VERSION"
+        printf '            <sparkle:releaseNotesLink>https://github.com/bones7456/notchy/releases/tag/v%s</sparkle:releaseNotesLink>\n' "$MARKETING_VERSION"
+        printf '            <pubDate>%s</pubDate>\n' "$PUB_DATE"
+        if [ -n "$MIN_OS" ]; then
+            printf '            <sparkle:minimumSystemVersion>%s</sparkle:minimumSystemVersion>\n' "$MIN_OS"
+        fi
+        printf '            <enclosure url="%s" sparkle:edSignature="%s" length="%s" type="application/octet-stream" />\n' \
+            "$ZIP_URL" "$ED_SIGNATURE" "$ZIP_LENGTH"
+        printf '        </item>\n'
+        printf '    </channel>\n'
+        printf '</rss>\n'
+    } > "$APPCAST_PATH"
+else
+    echo "SPARKLE_PRIVATE_KEY not set; skipping appcast.xml generation" >&2
+fi
+
 echo "==> Artifacts:"
 echo "    $ZIP_PATH"
 echo "    $DMG_PATH"
+if [ -f "$APPCAST_PATH" ]; then
+    echo "    $APPCAST_PATH"
+fi

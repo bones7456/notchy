@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/bones7456/notchy/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>RicWoTHEBrEzstC0TdtrQ34ZyzJAKoDm6B0v3D7w9gY=</string>
+</dict>
+</plist>
