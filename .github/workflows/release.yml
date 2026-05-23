@@ -28,6 +28,8 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -76,9 +78,39 @@ jobs:
           NOTES_MD="$RUNNER_TEMP/release_notes.md"
           NOTES_HTML="$RUNNER_TEMP/release_notes.html"
 
+          # PR-based notes (uses .github/release.yml for categorization).
           gh api -X POST "/repos/${{ github.repository }}/releases/generate-notes" \
             -f tag_name="$TAG" \
             --jq .body > "$NOTES_MD"
+
+          # If no PRs landed between the previous tag and this one, the body
+          # only carries the "Full Changelog" link. Synthesize a Changes
+          # section from git log so direct commits still appear in the notes.
+          if ! grep -qF '## What' "$NOTES_MD"; then
+            # Fetch full history so describe/log can reach the previous tag.
+            git fetch --tags --unshallow 2>/dev/null || git fetch --tags
+            PREV_TAG="$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)"
+            RANGE="${PREV_TAG:+$PREV_TAG..}$TAG"
+
+            COMMITS="$(git log --no-merges \
+              --pretty=format:"- %s ([\`%h\`](https://github.com/${{ github.repository }}/commit/%H))" \
+              "$RANGE")"
+
+            if [ -n "$COMMITS" ]; then
+              {
+                echo "## Changes"
+                echo
+                echo "$COMMITS"
+                echo
+                cat "$NOTES_MD"
+              } > "$NOTES_MD.new"
+              mv "$NOTES_MD.new" "$NOTES_MD"
+            fi
+          fi
+
+          echo "--- release notes (markdown) ---"
+          cat "$NOTES_MD"
+          echo "--- end ---"
 
           gh api -X POST /markdown \
             -F text=@"$NOTES_MD" \
