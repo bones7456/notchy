@@ -79,11 +79,40 @@ fi
 submit_for_notarization() {
     local target="$1"
     echo "==> Submitting $target to notarytool"
-    xcrun notarytool submit "$target" \
+    local json_out
+    json_out="$(xcrun notarytool submit "$target" \
         --apple-id "$APPLE_ID" \
         --password "$APPLE_APP_PASSWORD" \
         --team-id "$APPLE_TEAM_ID" \
-        --wait
+        --wait \
+        --output-format json)"
+    echo "$json_out"
+
+    local status submission_id
+    status="$(/usr/bin/python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["status"])' <<< "$json_out")"
+    submission_id="$(/usr/bin/python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["id"])' <<< "$json_out")"
+
+    if [ "$status" != "Accepted" ]; then
+        echo "==> Notarization status: $status — fetching detailed log" >&2
+        xcrun notarytool log "$submission_id" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" >&2 || true
+        echo "==> codesign metadata for embedded executables:" >&2
+        for path in \
+            "$APP_DIR" \
+            "$APP_DIR/Contents/Frameworks/Sparkle.framework" \
+            "$APP_DIR/Contents/Frameworks/Sparkle.framework/Versions/Current/Autoupdate" \
+            "$APP_DIR/Contents/Frameworks/Sparkle.framework/Versions/Current/Updater.app" \
+            "$APP_DIR/Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Downloader.xpc" \
+            "$APP_DIR/Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Installer.xpc"; do
+            if [ -e "$path" ]; then
+                echo "--- $path ---" >&2
+                codesign -dvvv "$path" 2>&1 | sed 's/^/    /' >&2 || true
+            fi
+        done
+        exit 1
+    fi
 }
 
 ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$STAGED_ZIP"
