@@ -64,7 +64,34 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 ditto "$BUILT_APP" "$APP_DIR"
 
-# build_app.sh already signed the app with hardened runtime + entitlements.
+# Sparkle's SPM-built helpers ship without our Developer ID + secure
+# timestamp, which notarization rejects. Re-sign them and rebuild the
+# enclosing seals from innermost outward.
+SPARKLE_FRAMEWORK="$APP_DIR/Contents/Frameworks/Sparkle.framework"
+if [ -d "$SPARKLE_FRAMEWORK" ]; then
+    echo "==> Re-signing Sparkle helpers with $SIGNING_IDENTITY"
+    SPARKLE_VERSION_DIR="$SPARKLE_FRAMEWORK/Versions/Current"
+    for helper in \
+        "$SPARKLE_VERSION_DIR/XPCServices/Installer.xpc" \
+        "$SPARKLE_VERSION_DIR/XPCServices/Downloader.xpc" \
+        "$SPARKLE_VERSION_DIR/Updater.app" \
+        "$SPARKLE_VERSION_DIR/Autoupdate"; do
+        if [ -e "$helper" ]; then
+            codesign --force --options runtime --timestamp \
+                --sign "$SIGNING_IDENTITY" \
+                --preserve-metadata=identifier,entitlements,requirements \
+                "$helper"
+        fi
+    done
+    codesign --force --options runtime --timestamp \
+        --sign "$SIGNING_IDENTITY" \
+        "$SPARKLE_FRAMEWORK"
+    codesign --force --options runtime --timestamp \
+        --sign "$SIGNING_IDENTITY" \
+        --entitlements "$ROOT_DIR/Notchy/Notchy.entitlements" \
+        "$APP_DIR"
+fi
+
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
 needs_notarize=1
