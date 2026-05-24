@@ -43,6 +43,10 @@ class SettingsManager {
         didSet { UserDefaults.standard.set(externalDisplayTrigger, forKey: "externalDisplayTrigger") }
     }
 
+    var terminalFontSize: CGFloat {
+        didSet { UserDefaults.standard.set(Double(terminalFontSize), forKey: "terminalFontSize") }
+    }
+
     init() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: "replaceNotch") == nil { defaults.set(true, forKey: "replaceNotch") }
@@ -64,5 +68,7 @@ class SettingsManager {
         preferredAgent = AgentKind(rawValue: defaults.string(forKey: "preferredAgent") ?? "") ?? .claude
         selectionCopyEnabled = defaults.bool(forKey: "selectionCopyEnabled")
         externalDisplayTrigger = defaults.bool(forKey: "externalDisplayTrigger")
+        let storedFontSize = defaults.double(forKey: "terminalFontSize")
+        terminalFontSize = storedFontSize > 0 ? CGFloat(storedFontSize) : 13
     }
 }

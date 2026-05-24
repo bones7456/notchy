@@ -325,6 +325,24 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
             }
             return true
         }
+        // Cmd+= / Cmd++ / Cmd+- : zoom terminal font. We match
+        // charactersIgnoringModifiers so Shift variants ("+" via Shift+=) work
+        // too without a separate case.
+        if event.modifierFlags.contains(.command),
+           let chars = event.charactersIgnoringModifiers {
+            if chars == "=" || chars == "+" {
+                TerminalManager.shared.adjustFontSize(by: 1)
+                return true
+            }
+            if chars == "-" {
+                TerminalManager.shared.adjustFontSize(by: -1)
+                return true
+            }
+            if chars == "0" {
+                TerminalManager.shared.setFontSize(TerminalManager.defaultFontSize)
+                return true
+            }
+        }
         // Cmd+1..9: jump to tab N (ignored if N exceeds session count)
         let cmdOnly = event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command
         if cmdOnly,

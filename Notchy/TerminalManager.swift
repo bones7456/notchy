@@ -487,6 +487,35 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
 
     private var terminals: [UUID: LocalProcessTerminalView] = [:]
 
+    static let minFontSize: CGFloat = 8
+    static let maxFontSize: CGFloat = 32
+    static let defaultFontSize: CGFloat = 13
+
+    /// Nerd Font for Unicode/Powerline glyph support, falling back to system mono.
+    private func makeTerminalFont(size: CGFloat) -> NSFont {
+        if let f = NSFont(name: "MesloLGSDZNF-Regular", size: size) { return f }
+        if let f = NSFont(name: "MesloLGLNF-Regular", size: size) { return f }
+        return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
+    /// Apply a font-size delta to every live terminal and persist the new size.
+    /// Clamped to [minFontSize, maxFontSize]; no-ops if already at the bound.
+    func adjustFontSize(by delta: CGFloat) {
+        setFontSize(SettingsManager.shared.terminalFontSize + delta)
+    }
+
+    /// Set an absolute font size on every live terminal and persist it.
+    /// Clamped to [minFontSize, maxFontSize]; no-ops if already at that size.
+    func setFontSize(_ size: CGFloat) {
+        let newSize = max(Self.minFontSize, min(Self.maxFontSize, size))
+        guard newSize != SettingsManager.shared.terminalFontSize else { return }
+        SettingsManager.shared.terminalFontSize = newSize
+        let font = makeTerminalFont(size: newSize)
+        for terminal in terminals.values {
+            terminal.font = font
+        }
+    }
+
     func terminal(for sessionId: UUID, workingDirectory: String, launchAgent: Bool = true) -> LocalProcessTerminalView {
         if let existing = terminals[sessionId] {
             return existing
@@ -496,14 +525,7 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         terminal.sessionId = sessionId
         terminal.processDelegate = self
 
-        // Use Nerd Font for Unicode/Powerline glyph support, fall back to system mono
-        if let nerdFont = NSFont(name: "MesloLGSDZNF-Regular", size: 13) {
-            terminal.font = nerdFont
-        } else if let nerdFont = NSFont(name: "MesloLGLNF-Regular", size: 13) {
-            terminal.font = nerdFont
-        } else {
-            terminal.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        }
+        terminal.font = makeTerminalFont(size: SettingsManager.shared.terminalFontSize)
         terminal.nativeBackgroundColor = NSColor(white: 0.05, alpha: 1.0)
         terminal.nativeForegroundColor = NSColor(white: 0.95, alpha: 1.0)
 
