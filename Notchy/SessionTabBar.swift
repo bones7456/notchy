@@ -138,6 +138,11 @@ struct SessionTab: View {
                 }
             }
 
+            Button("Shadow Tab") {
+                SessionStore.shared.createShadowSession(from: session.id)
+            }
+            .disabled(session.kind == .normal)
+
             Button("Rename Tab") {
                 showRenameAlert()
             }

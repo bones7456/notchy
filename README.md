@@ -13,6 +13,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **AI agent auto-launch** — starts `claude` for projects with `CLAUDE.md`, or `codex` for projects with `AGENTS.md`
 - **Multi-session tabs** — run multiple Claude Code or Codex sessions side by side
 - **Pin tabs to persist** — right-click a `+` tab → **Pin Tab** to keep it across app restarts; Notchy remembers the tab's working directory and re-runs agent auto-launch on relaunch
+- **Shadow tabs** — right-click an Xcode or pinned tab → **Shadow Tab** to spawn a plain shell sibling cd'd into the same directory, for ad-hoc git/build commands without disturbing the agent
 - **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
 - **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes
 

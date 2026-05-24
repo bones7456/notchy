@@ -282,6 +282,28 @@ class SessionStore {
         persistSessions()
     }
 
+    /// "Shadow Tab" menu: creates a `.normal` sibling to the right of a
+    /// `.xcode`/`.pinned` tab that cd's into the parent shell's current
+    /// working directory without launching Claude/Codex — for ad-hoc git
+    /// or shell work alongside the agent.
+    func createShadowSession(from parentId: UUID) {
+        guard let parentIndex = sessions.firstIndex(where: { $0.id == parentId }) else { return }
+        let parent = sessions[parentIndex]
+        // Prefer the parent shell's live CWD so a `cd` inside the agent tab
+        // is mirrored; fall back to the stored workingDirectory if the
+        // parent terminal hasn't been started yet.
+        let cwd = TerminalManager.shared.currentWorkingDirectory(for: parentId) ?? parent.workingDirectory
+        let session = TerminalSession(
+            projectName: parent.displayName,
+            workingDirectory: cwd,
+            started: true,
+            kind: .normal
+        )
+        sessions.insert(session, at: parentIndex + 1)
+        activeSessionId = session.id
+        persistSessions()
+    }
+
     /// Pin a `.normal` tab so it persists across launches, or unpin a `.pinned`
     /// tab back to ephemeral. `.xcode` tabs are not affected.
     func setPinned(_ id: UUID, pinned: Bool) {
