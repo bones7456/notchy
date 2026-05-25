@@ -9,6 +9,15 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private var hasNewData = false
     private var selectionCopyDebounceTimer: Timer?
 
+    // SwiftTerm forces yDisp back to yBase on every line scroll because its
+    // `userScrolling` flag is never set from the scroll wheel path. We track
+    // the live bottom (yBase) ourselves: after super.dataReceived runs, if
+    // yDisp moved we know it now equals yBase, so we record it. Status
+    // detection reads from this row so it sees the latest output even while
+    // the user is browsing scrollback; the dataReceived override also uses
+    // it to restore the user's manual scroll position after each chunk.
+    private var latestYBase: Int = 0
+
     // SwiftTerm's NSTextInputClient implementation drops marked (preedit)
     // text on the floor, so IME users only see the candidate window and
     // have no inline view of the pinyin/romaji they're typing. We capture
@@ -100,12 +109,17 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
             let mods = event.modifierFlags.intersection([.shift, .option, .control])
             if mods.isEmpty {
-                self.send(txt: "\u{1b}[\(code)")
+                // Respect DECCKM: less/vim/etc. set application cursor mode
+                // (\e[?1h) and only recognize SS3-prefixed arrows (\eO A/B/C/D).
+                // Default normal cursor mode uses CSI (\e[ A/B/C/D).
+                let prefix = self.getTerminal().applicationCursor ? "\u{1b}O" : "\u{1b}["
+                self.send(txt: "\(prefix)\(code)")
             } else {
                 var modifier = 1
                 if mods.contains(.shift) { modifier += 1 }
                 if mods.contains(.option) { modifier += 2 }
                 if mods.contains(.control) { modifier += 4 }
+                // Modified arrows always use CSI — SS3 has no parameter form.
                 self.send(txt: "\u{1b}[1;\(modifier)\(code)")
             }
             return nil // consume the event
@@ -156,10 +170,13 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
                     terminal.sendEvent(buttonFlags: flags, x: 0, y: 0)
                 }
             } else {
-                // No mouse mode: send arrow key sequences so the TUI can scroll
+                // No mouse mode: send arrow key sequences so the TUI can scroll.
+                // Match DECCKM (application cursor mode) the same way the arrow
+                // key monitor does, so less/vim/man actually recognize them.
                 let arrow = event.deltaY > 0 ? "A" : "B" // A = Up, B = Down
+                let prefix = terminal.applicationCursor ? "\u{1b}O" : "\u{1b}["
                 for _ in 0..<count {
-                    self.send(txt: "\u{1b}[\(arrow)")
+                    self.send(txt: "\(prefix)\(arrow)")
                 }
             }
             return nil // consume the event
@@ -183,6 +200,27 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private func extractAllLines() -> [String]? {
         let terminal = getTerminal()
         guard terminal.rows >= 20 else { return nil }
+
+        // getCharacter reads via getLine which indexes `buffer.lines[row + yDisp]`,
+        // so it returns whatever the viewport is currently looking at. If the
+        // user has scrolled up to browse scrollback we still need to read the
+        // live bottom — otherwise the status detector would freeze on the
+        // stale frame the user is viewing. Swap yDisp to the tracked yBase
+        // for the duration of the read, then restore. This runs on the main
+        // thread; the setter has no side effects (no refresh, no redraw), so
+        // nothing else can observe the temporary value.
+        let buffer = terminal.buffer
+        let savedYDisp = buffer.yDisp
+        let needsSwap = savedYDisp != latestYBase
+        if needsSwap {
+            buffer.yDisp = latestYBase
+        }
+        defer {
+            if needsSwap {
+                buffer.yDisp = savedYDisp
+            }
+        }
+
         var lineTexts: [String] = []
         for row in 0..<terminal.rows {
             var line = ""
@@ -223,8 +261,26 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     }
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
+        let buffer = getTerminal().buffer
+        let preYDisp = buffer.yDisp
+        let wasInScrollback = preYDisp < latestYBase
+
         super.dataReceived(slice: slice)
         hasNewData = true
+
+        // Snapshot the new yBase so extractAllLines can read the live bottom
+        // even when the viewport is parked in scrollback.
+        if buffer.yDisp != preYDisp {
+            latestYBase = buffer.yDisp
+        }
+
+        // Only restore the viewport if the user was already browsing
+        // scrollback before this chunk arrived. When the user is at the
+        // bottom (preYDisp == old latestYBase), let SwiftTerm's auto-scroll
+        // keep them there.
+        if wasInScrollback {
+            scrollTo(row: preYDisp, notifyAccessibility: false)
+        }
     }
 
     private func evaluateStatus(for id: UUID) {
