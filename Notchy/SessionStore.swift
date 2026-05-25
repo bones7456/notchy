@@ -294,7 +294,7 @@ class SessionStore {
         // parent terminal hasn't been started yet.
         let cwd = TerminalManager.shared.currentWorkingDirectory(for: parentId) ?? parent.workingDirectory
         let session = TerminalSession(
-            projectName: parent.displayName,
+            projectName: parent.displayName + "$",
             workingDirectory: cwd,
             started: true,
             kind: .normal
