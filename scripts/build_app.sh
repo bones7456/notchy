@@ -31,12 +31,11 @@ mkdir -p "$BUILD_DIR"
 
 # Sparkle decides whether an update is available by comparing the appcast's
 # <sparkle:version> against the installed app's CFBundleVersion (the build
-# number). The project keeps CURRENT_PROJECT_VERSION pinned at 1, so without
-# this override every release would ship CFBundleVersion=1 and Sparkle could
-# never tell two releases apart. Pin the build number to the marketing version
-# instead: it is monotonic across releases and matches what the appcast
-# publishes, so 1.2.4 == 1.2.4 (no false update) while 1.2.4 -> 1.2.5 is
-# correctly detected.
+# number). The project sets CURRENT_PROJECT_VERSION = $(MARKETING_VERSION) so
+# the build number already tracks the marketing version for both local and CI
+# builds; we re-assert it explicitly here as a safety net so the archived
+# CFBundleVersion always matches what the appcast publishes (e.g. 1.2.5 ==
+# 1.2.5, no false update; 1.2.4 -> 1.2.5 correctly detected).
 MARKETING_VERSION="$(xcodebuild -project "$XCODE_PROJECT" -scheme "$SCHEME" -configuration "$CONFIGURATION" -showBuildSettings 2>/dev/null | awk -F' = ' '/ MARKETING_VERSION =/{print $2; exit}')"
 if [ -z "$MARKETING_VERSION" ]; then
     echo "ERROR: could not determine MARKETING_VERSION from build settings" >&2
