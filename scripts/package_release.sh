@@ -54,6 +54,10 @@ cd "$ROOT_DIR"
 
 BUILT_APP="$DIST_DIR/Notchy.app"
 MARKETING_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUILT_APP/Contents/Info.plist")"
+# Sparkle compares <sparkle:version> against the installed app's CFBundleVersion,
+# so it must be the build number, not the marketing string. build_app.sh pins
+# CFBundleVersion to the marketing version, so the two stay in lockstep.
+BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$BUILT_APP/Contents/Info.plist")"
 BASENAME="Notchy-${MARKETING_VERSION}"
 STAGED_ZIP="$STAGE_DIR/${BASENAME}.zip"
 STAGED_DMG="$STAGE_DIR/${BASENAME}.dmg"
@@ -240,7 +244,7 @@ if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
         printf '        <link>https://github.com/bones7456/notchy</link>\n'
         printf '        <item>\n'
         printf '            <title>Version %s</title>\n' "$MARKETING_VERSION"
-        printf '            <sparkle:version>%s</sparkle:version>\n' "$MARKETING_VERSION"
+        printf '            <sparkle:version>%s</sparkle:version>\n' "$BUILD_VERSION"
         printf '            <sparkle:shortVersionString>%s</sparkle:shortVersionString>\n' "$MARKETING_VERSION"
         if [ -n "$NOTES_HTML" ]; then
             printf '            <description><![CDATA[\n'
