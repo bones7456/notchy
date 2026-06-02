@@ -501,6 +501,33 @@ class SessionStore {
         sessions[index].generation += 1
     }
 
+    /// Closes a session, but first asks for confirmation when it's a pinned or
+    /// Xcode tab. Those tabs carry restored state (snapshotted CWD / detected
+    /// project) and survive relaunches, so an accidental close is costly.
+    /// Normal tabs close immediately. Used by the tab UI and the Cmd+W shortcut.
+    func requestCloseSession(_ id: UUID) {
+        guard let session = sessions.first(where: { $0.id == id }) else { return }
+
+        guard session.kind == .pinned || session.kind == .xcode else {
+            closeSession(id)
+            return
+        }
+
+        isShowingDialog = true
+        defer { isShowingDialog = false }
+
+        let kindLabel = session.kind == .xcode ? "Xcode" : "pinned"
+        let alert = NSAlert()
+        alert.messageText = "Close tab \(session.displayName)?"
+        alert.informativeText = "This is a \(kindLabel) tab. Closing it ends its terminal session."
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Cancel")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            closeSession(id)
+        }
+    }
+
     func closeSession(_ id: UUID, dismissed: Bool = true) {
         if dismissed, let session = sessions.first(where: { $0.id == id }) {
             dismissedProjects[session.projectName] = false

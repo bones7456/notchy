@@ -328,7 +328,7 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
         }
         if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "w" {
             if let activeId = sessionStore.activeSessionId {
-                sessionStore.closeSession(activeId)
+                sessionStore.requestCloseSession(activeId)
             }
             return true
         }

@@ -14,7 +14,7 @@ struct SessionTabBar: View {
                     terminalStatus: session.terminalStatus,
                     foregroundOpacity: sessionStore.isWindowFocused ? 1.0 : 0.78,
                     onSelect: { sessionStore.selectSession(session.id) },
-                    onClose: { sessionStore.closeSession(session.id) },
+                    onClose: { sessionStore.requestCloseSession(session.id) },
                     onRename: { newName in
                         sessionStore.renameSession(session.id, to: newName)
                     }
@@ -128,6 +128,11 @@ struct SessionTab: View {
         .onTapGesture(perform: onSelect)
         .overlay(MiddleClickView { onClose() })
         .contextMenu {
+            Button("Shadow Tab") {
+                SessionStore.shared.createShadowSession(from: session.id)
+            }
+            .disabled(session.kind == .normal)
+
             if session.kind == .normal {
                 Button("Pin Tab") {
                     SessionStore.shared.setPinned(session.id, pinned: true)
@@ -137,11 +142,6 @@ struct SessionTab: View {
                     SessionStore.shared.setPinned(session.id, pinned: false)
                 }
             }
-
-            Button("Shadow Tab") {
-                SessionStore.shared.createShadowSession(from: session.id)
-            }
-            .disabled(session.kind == .normal)
 
             Button("Rename Tab") {
                 showRenameAlert()
