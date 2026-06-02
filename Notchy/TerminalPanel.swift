@@ -15,7 +15,7 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
     private static let widthDefaultsKey = "panelWidth"
     private static let expandedHeightDefaultsKey = "panelExpandedHeight"
     private var expandedHeight: CGFloat
-    private var resizeIndicatorHideWork: DispatchWorkItem?
+    private var cornerIndicatorHideWork: DispatchWorkItem?
 
     /// Clips the sliding `visualEffect` to the window bounds so the slide-in
     /// animation never renders pixels above the primary screen's top edge
@@ -149,19 +149,26 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
         }
 
         if inLiveResize {
-            resizeIndicatorHideWork?.cancel()
-            resizeIndicatorHideWork = nil
-            sessionStore.resizeIndicatorText = "\(Int(frame.width)) × \(Int(frame.height))"
+            // Keep the dimensions pinned while the drag is in flight — the
+            // auto-hide timer only starts once the user lets go.
+            cornerIndicatorHideWork?.cancel()
+            cornerIndicatorHideWork = nil
+            sessionStore.cornerIndicatorText = "\(Int(frame.width)) × \(Int(frame.height))"
         }
     }
 
     @objc func windowDidEndLiveResize(_ notification: Notification) {
-        sessionStore.resizeIndicatorText = "\(Int(frame.width)) × \(Int(frame.height))"
-        resizeIndicatorHideWork?.cancel()
+        showCornerIndicator("\(Int(frame.width)) × \(Int(frame.height))")
+    }
+
+    /// Show transient text next to the pin icon and clear it after 1s.
+    private func showCornerIndicator(_ text: String) {
+        sessionStore.cornerIndicatorText = text
+        cornerIndicatorHideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            self?.sessionStore.resizeIndicatorText = nil
+            self?.sessionStore.cornerIndicatorText = nil
         }
-        resizeIndicatorHideWork = work
+        cornerIndicatorHideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
     }
 
@@ -332,14 +339,17 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
            let chars = event.charactersIgnoringModifiers {
             if chars == "=" || chars == "+" {
                 TerminalManager.shared.adjustFontSize(by: 1)
+                showCornerIndicator("\(Int(SettingsManager.shared.terminalFontSize))pt")
                 return true
             }
             if chars == "-" {
                 TerminalManager.shared.adjustFontSize(by: -1)
+                showCornerIndicator("\(Int(SettingsManager.shared.terminalFontSize))pt")
                 return true
             }
             if chars == "0" {
                 TerminalManager.shared.setFontSize(TerminalManager.defaultFontSize)
+                showCornerIndicator("\(Int(SettingsManager.shared.terminalFontSize))pt")
                 return true
             }
         }

@@ -72,8 +72,8 @@ struct PanelContentView: View {
                 .padding(.trailing, -4)
                 .padding(.leading, -10)
                 .overlay(alignment: .leading) {
-                    if let resizeText = sessionStore.resizeIndicatorText {
-                        Text(resizeText)
+                    if let indicatorText = sessionStore.cornerIndicatorText {
+                        Text(indicatorText)
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundColor(.white.opacity(0.7))
                             .padding(.horizontal, 6)
