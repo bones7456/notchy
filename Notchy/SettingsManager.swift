@@ -47,6 +47,23 @@ class SettingsManager {
         didSet { UserDefaults.standard.set(Double(terminalFontSize), forKey: "terminalFontSize") }
     }
 
+    static let minBufferSize = 500
+    static let maxBufferSize = 50000
+    static let defaultBufferSize = 1000
+
+    /// Scrollback buffer size in lines, applied to every terminal's normal
+    /// buffer. Clamped to [minBufferSize, maxBufferSize].
+    var terminalBufferSize: Int {
+        didSet {
+            let clamped = max(Self.minBufferSize, min(Self.maxBufferSize, terminalBufferSize))
+            if clamped != terminalBufferSize {
+                terminalBufferSize = clamped
+                return
+            }
+            UserDefaults.standard.set(terminalBufferSize, forKey: "terminalBufferSize")
+        }
+    }
+
     init() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: "replaceNotch") == nil { defaults.set(true, forKey: "replaceNotch") }
@@ -58,6 +75,7 @@ class SettingsManager {
         if defaults.object(forKey: "preferredAgent") == nil { defaults.set(AgentKind.claude.rawValue, forKey: "preferredAgent") }
         if defaults.object(forKey: "selectionCopyEnabled") == nil { defaults.set(true, forKey: "selectionCopyEnabled") }
         if defaults.object(forKey: "externalDisplayTrigger") == nil { defaults.set(false, forKey: "externalDisplayTrigger") }
+        if defaults.object(forKey: "terminalBufferSize") == nil { defaults.set(Self.defaultBufferSize, forKey: "terminalBufferSize") }
 
         showNotch = defaults.bool(forKey: "replaceNotch")
         soundsEnabled = defaults.bool(forKey: "soundsEnabled")
@@ -70,5 +88,9 @@ class SettingsManager {
         externalDisplayTrigger = defaults.bool(forKey: "externalDisplayTrigger")
         let storedFontSize = defaults.double(forKey: "terminalFontSize")
         terminalFontSize = storedFontSize > 0 ? CGFloat(storedFontSize) : 13
+        let storedBufferSize = defaults.integer(forKey: "terminalBufferSize")
+        terminalBufferSize = storedBufferSize > 0
+            ? max(Self.minBufferSize, min(Self.maxBufferSize, storedBufferSize))
+            : Self.defaultBufferSize
     }
 }

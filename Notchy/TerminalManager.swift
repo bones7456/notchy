@@ -572,6 +572,17 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         }
     }
 
+    /// Apply a new scrollback buffer size to every live terminal and persist it.
+    /// Clamped to [minBufferSize, maxBufferSize].
+    func setBufferSize(_ size: Int) {
+        let newSize = max(SettingsManager.minBufferSize, min(SettingsManager.maxBufferSize, size))
+        guard newSize != SettingsManager.shared.terminalBufferSize else { return }
+        SettingsManager.shared.terminalBufferSize = newSize
+        for terminal in terminals.values {
+            terminal.changeScrollback(newSize)
+        }
+    }
+
     func terminal(for sessionId: UUID, workingDirectory: String, launchAgent: Bool = true) -> LocalProcessTerminalView {
         if let existing = terminals[sessionId] {
             return existing
@@ -584,6 +595,7 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         terminal.font = makeTerminalFont(size: SettingsManager.shared.terminalFontSize)
         terminal.nativeBackgroundColor = NSColor(white: 0.05, alpha: 1.0)
         terminal.nativeForegroundColor = NSColor(white: 0.95, alpha: 1.0)
+        terminal.changeScrollback(SettingsManager.shared.terminalBufferSize)
 
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let environment = buildEnvironment()

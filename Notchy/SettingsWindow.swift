@@ -84,10 +84,55 @@ struct GeneralTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                BufferSizeRow()
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+}
+
+/// Scrollback buffer size control: a numeric field (committed on Enter/blur)
+/// plus a stepper. Edits are clamped to the SettingsManager bounds and applied
+/// to every live terminal via TerminalManager.
+struct BufferSizeRow: View {
+    @Bindable private var settings = SettingsManager.shared
+    @State private var draft: String = String(SettingsManager.shared.terminalBufferSize)
+
+    private func commit() {
+        let parsed = Int(draft.trimmingCharacters(in: .whitespaces)) ?? settings.terminalBufferSize
+        TerminalManager.shared.setBufferSize(parsed)
+        // Reflect the clamped, persisted value back into the field.
+        draft = String(settings.terminalBufferSize)
+    }
+
+    private func step(_ delta: Int) {
+        TerminalManager.shared.setBufferSize(settings.terminalBufferSize + delta)
+        draft = String(settings.terminalBufferSize)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text("Scrollback buffer")
+                Spacer()
+                TextField("", text: $draft)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 70)
+                    .onSubmit { commit() }
+                Stepper("") {
+                    step(500)
+                } onDecrement: {
+                    step(-500)
+                }
+                .labelsHidden()
+                Text("lines")
+                    .foregroundStyle(.secondary)
+            }
+            Text("Lines kept in terminal history (\(SettingsManager.minBufferSize)–\(SettingsManager.maxBufferSize))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
