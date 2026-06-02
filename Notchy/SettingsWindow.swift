@@ -15,13 +15,21 @@ enum SettingsTab: String, CaseIterable {
     }
 }
 
+/// Holds the settings window's selected tab so the controller can switch tabs
+/// on an already-open window (e.g. when "About" is chosen from the menu).
+@Observable
+final class SettingsSelection {
+    var tab: SettingsTab
+    init(tab: SettingsTab) { self.tab = tab }
+}
+
 struct SettingsContentView: View {
-    @State private var selectedTab: SettingsTab = .about
+    @Bindable var selection: SettingsSelection
     var onShowNotchChanged: ((Bool) -> Void)?
     var onExternalDisplayChanged: ((Bool) -> Void)?
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $selection.tab) {
             GeneralTab(onShowNotchChanged: onShowNotchChanged, onExternalDisplayChanged: onExternalDisplayChanged)
                 .tabItem { Label(SettingsTab.general.rawValue, systemImage: SettingsTab.general.icon) }
                 .tag(SettingsTab.general)
@@ -292,16 +300,20 @@ struct AboutTab: View {
 class SettingsWindowController {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
+    private var selection: SettingsSelection?
 
-    func show(onShowNotchChanged: @escaping (Bool) -> Void, onExternalDisplayChanged: @escaping (Bool) -> Void) {
+    func show(tab: SettingsTab = .general, onShowNotchChanged: @escaping (Bool) -> Void, onExternalDisplayChanged: @escaping (Bool) -> Void) {
         if let existing = window {
+            selection?.tab = tab
             existing.level = .floating
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
-        let content = SettingsContentView(onShowNotchChanged: onShowNotchChanged, onExternalDisplayChanged: onExternalDisplayChanged)
+        let selection = SettingsSelection(tab: tab)
+        self.selection = selection
+        let content = SettingsContentView(selection: selection, onShowNotchChanged: onShowNotchChanged, onExternalDisplayChanged: onExternalDisplayChanged)
         let hostingView = NSHostingView(rootView: content)
 
         let win = NSWindow(

@@ -252,6 +252,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         checkUpdatesItem.target = self
         menu.addItem(checkUpdatesItem)
 
+        let aboutItem = NSMenuItem(
+            title: "About Notchy",
+            action: #selector(openAbout),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
@@ -286,8 +294,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         sessionStore.restoreCheckpoint(latest, for: sessionId)
     }
 
+    @objc private func openAbout() {
+        presentSettings(tab: .about)
+    }
+
     @objc private func openSettings() {
+        presentSettings(tab: .general)
+    }
+
+    private func presentSettings(tab: SettingsTab) {
         SettingsWindowController.shared.show(
+            tab: tab,
             onShowNotchChanged: { [weak self] showNotch in
                 guard let self else { return }
                 if showNotch {
