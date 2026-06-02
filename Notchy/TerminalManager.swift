@@ -474,32 +474,35 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         )
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.level = .popUpMenu
 
-        let visual = NSVisualEffectView()
-        visual.material = .hudWindow
-        visual.state = .active
-        visual.wantsLayer = true
-        visual.layer?.cornerRadius = 4
-        visual.layer?.masksToBounds = true
+        // Mimic macOS Terminal: the preedit text renders inline at the caret
+        // with just an underline — no shadow or rounded corner. The container
+        // is filled with the terminal's background color (set in
+        // showPreeditPanel) so it covers the terminal's white block cursor
+        // sitting under the first character; otherwise that glyph would be
+        // white-on-white and invisible.
+        let container = NSView()
+        container.wantsLayer = true
 
         let label = NSTextField(labelWithString: "")
         label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         label.backgroundColor = .clear
+        label.drawsBackground = false
         label.isBezeled = false
         label.isEditable = false
         label.translatesAutoresizingMaskIntoConstraints = false
-        visual.addSubview(label)
+        container.addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: visual.leadingAnchor, constant: 6),
-            label.trailingAnchor.constraint(equalTo: visual.trailingAnchor, constant: -6),
-            label.centerYAnchor.constraint(equalTo: visual.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
         ])
 
-        panel.contentView = visual
+        panel.contentView = container
         preeditPanel = panel
         preeditLabel = label
         return (panel, label)
@@ -508,24 +511,30 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private func showPreeditPanel(with text: String) {
         let (panel, label) = ensurePreeditPanel()
 
+        // Match the terminal's foreground color so the preedit text stays
+        // legible against the (usually dark) terminal background, and fill the
+        // container with the terminal background so it masks the white block
+        // cursor underneath the first glyph.
+        let fg = nativeForegroundColor
+        label.superview?.layer?.backgroundColor = nativeBackgroundColor.cgColor
         let attr = NSAttributedString(string: text, attributes: [
             .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
-            .foregroundColor: NSColor.labelColor,
+            .foregroundColor: fg,
+            .underlineColor: fg,
             .underlineStyle: NSUnderlineStyle.single.rawValue,
         ])
         label.attributedStringValue = attr
         label.sizeToFit()
-
         let labelSize = label.frame.size
-        let panelSize = NSSize(width: labelSize.width + 12, height: labelSize.height + 6)
-        panel.setContentSize(panelSize)
+        panel.setContentSize(labelSize)
 
-        // firstRect returns the caret rect in screen coordinates. Position the
-        // panel ABOVE the caret line — macOS docks the system IME candidate
-        // window just below firstRect, so anchoring our panel below would
-        // cover the candidates.
+        // firstRect returns the caret rect in screen coordinates. Render the
+        // text inline at the caret, like macOS Terminal: align the panel's
+        // bottom to the caret baseline so the preedit appears to sit on the
+        // current line. The system IME candidate window docks just below
+        // firstRect, so it stays clear of this inline text.
         let caretRect = firstRect(forCharacterRange: NSRange(location: 0, length: 0), actualRange: nil)
-        let origin = NSPoint(x: caretRect.origin.x, y: caretRect.origin.y + caretRect.height - 18)
+        let origin = NSPoint(x: caretRect.origin.x, y: caretRect.origin.y)
         panel.setFrameOrigin(origin)
 
         if !panel.isVisible {
