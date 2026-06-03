@@ -261,17 +261,29 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     }
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
-        let buffer = getTerminal().buffer
-        let preYDisp = buffer.yDisp
-        let wasInScrollback = preYDisp < latestYBase
+        let terminal = getTerminal()
+        let wasAlternate = terminal.isCurrentBufferAlternate
+        let preYDisp = terminal.buffer.yDisp
+        // Only treat the viewport as "in scrollback" on the normal buffer.
+        // The alternate buffer (vim/less) has no scrollback and its yDisp is
+        // unrelated to latestYBase, so comparing them would spuriously fire.
+        let wasInScrollback = !wasAlternate && preYDisp < latestYBase
 
         super.dataReceived(slice: slice)
         hasNewData = true
 
+        // Re-read the buffer: super may have switched buffers (entering or
+        // leaving vim via \e[?1049h/l). yDisp isn't comparable across that
+        // switch, so skip all scroll bookkeeping unless we stayed on the
+        // normal buffer for the whole chunk. Without this guard, leaving the
+        // alternate screen runs scrollTo on the freshly-restored normal
+        // buffer and snaps it to the top.
+        guard !wasAlternate, !terminal.isCurrentBufferAlternate else { return }
+
         // Snapshot the new yBase so extractAllLines can read the live bottom
         // even when the viewport is parked in scrollback.
-        if buffer.yDisp != preYDisp {
-            latestYBase = buffer.yDisp
+        if terminal.buffer.yDisp != preYDisp {
+            latestYBase = terminal.buffer.yDisp
         }
 
         // Only restore the viewport if the user was already browsing
