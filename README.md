@@ -4,7 +4,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 
 > This is a community-maintained continuation of [adamlyttleapps/notchy](https://github.com/adamlyttleapps/notchy), which is no longer being updated by the original author. Huge thanks to [Adam Lyttle](https://github.com/adamlyttleapps) for creating the project and open-sourcing it — this fork exists only to keep it alive and ship small fixes/improvements on top.
 
-<!-- Add your screenshot here: ![Notchy](screenshot.png) -->
+<video src="https://github.com/user-attachments/assets/472e6b16-089b-4115-92f4-5f30945d62dd" autoplay loop muted playsinline width="600"></video>
 
 ## Features
 
