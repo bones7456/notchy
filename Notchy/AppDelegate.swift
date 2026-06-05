@@ -197,7 +197,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             stopHoverTracking()
         } else {
             panelOpenedViaHover = false
-            showPanelBelowStatusItem()
+            let screen = NSScreen.builtIn ?? NSScreen.main!
+            panel.showPanelCentered(on: screen)
             sessionStore.detectAndSwitchAsync()
         }
     }

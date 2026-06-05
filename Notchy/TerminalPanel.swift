@@ -365,6 +365,22 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
                 return true
             }
         }
+        // Cmd+Shift+P: toggle pin window
+        if event.modifierFlags.intersection([.command, .shift, .control, .option]) == [.command, .shift],
+           event.charactersIgnoringModifiers == "p" {
+            sessionStore.isPinned.toggle()
+            return true
+        }
+        // Cmd+P: toggle pin current tab (only .normal ↔ .pinned)
+        if event.modifierFlags.intersection([.command, .shift, .control, .option]) == .command,
+           event.charactersIgnoringModifiers == "p" {
+            if let id = sessionStore.activeSessionId,
+               let session = sessionStore.sessions.first(where: { $0.id == id }),
+               session.kind == .normal || session.kind == .pinned {
+                sessionStore.setPinned(id, pinned: session.kind == .normal)
+            }
+            return true
+        }
         // Ctrl+Tab / Ctrl+Shift+Tab: cycle sessions
         if event.keyCode == 48 && event.modifierFlags.contains(.control) {
             if event.modifierFlags.contains(.shift) {
