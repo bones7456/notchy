@@ -568,26 +568,110 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
     static let maxFontSize: CGFloat = 32
     static let defaultFontSize: CGFloat = 13
 
-    /// Nerd Font for Unicode/Powerline glyph support, falling back to system mono.
     private func makeTerminalFont(size: CGFloat) -> NSFont {
+        let settings = SettingsManager.shared
+        let familyName = settings.terminalFontName.flatMap { $0.isEmpty ? nil : $0 }
+
+        var font: NSFont
+        if let family = familyName {
+            font = fontMember(family: family, weight: settings.terminalFontWeight, size: size)
+                ?? NSFont(name: family, size: size)
+                ?? fallbackFont(size: size)
+        } else {
+            font = fallbackFont(size: size)
+        }
+
+        if !settings.terminalLigaturesEnabled {
+            font = disablingLigatures(font, size: size)
+        }
+
+        return font
+    }
+
+    /// Returns a variant of `font` with programming ligatures suppressed.
+    ///
+    /// `===`, `=>`, `!=` etc. in fonts like Fira Code / Maple Mono are implemented via the
+    /// OpenType `calt` (contextual alternates) feature — AAT type 36 — not `liga`. We turn off
+    /// both `calt` and common ligatures (`liga`, type 1) through font feature settings.
+    ///
+    /// This works without patching SwiftTerm because SwiftTerm assigns the base font straight to
+    /// `FontSet.normal` (no `NSFontManager.convert`), so the feature settings survive on the
+    /// normal — and, since `convert` preserves descriptor attributes, the bold/italic — variants.
+    private func disablingLigatures(_ font: NSFont, size: CGFloat) -> NSFont {
+        // kContextualAlternatesType = 36, kContextualAlternatesOffSelector = 1
+        // kLigaturesType = 1, kCommonLigaturesOffSelector = 3
+        let desc = font.fontDescriptor.addingAttributes([
+            .featureSettings: [
+                [NSFontDescriptor.FeatureKey.typeIdentifier: 36,
+                 NSFontDescriptor.FeatureKey.selectorIdentifier: 1],
+                [NSFontDescriptor.FeatureKey.typeIdentifier: 1,
+                 NSFontDescriptor.FeatureKey.selectorIdentifier: 3],
+            ]
+        ])
+        return NSFont(descriptor: desc, size: size) ?? font
+    }
+
+    private func fallbackFont(size: CGFloat) -> NSFont {
         if let f = NSFont(name: "MesloLGSDZNF-Regular", size: size) { return f }
         if let f = NSFont(name: "MesloLGLNF-Regular", size: size) { return f }
         return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }
 
-    /// Apply a font-size delta to every live terminal and persist the new size.
-    /// Clamped to [minFontSize, maxFontSize]; no-ops if already at the bound.
+    /// Find the best upright (non-italic) member of `family` matching the desired weight.
+    /// Tries an exact style-name match first ("Light", "Regular", …), then falls back to the
+    /// member whose AppKit weight number is closest to the target.
+    private func fontMember(family: String, weight: TerminalFontWeight, size: CGFloat) -> NSFont? {
+        guard let members = NSFontManager.shared.availableMembers(ofFontFamily: family),
+              !members.isEmpty else { return nil }
+
+        // NSFontItalicTrait = 0x00000001; filter out italic faces.
+        let upright = members.filter {
+            guard let traits = $0[3] as? UInt else { return true }
+            return (traits & 0x1) == 0
+        }
+        guard !upright.isEmpty else { return nil }
+
+        let keyword = weight.rawValue.lowercased()
+        if let exact = upright.first(where: { ($0[1] as? String)?.lowercased() == keyword }),
+           let psName = exact[0] as? String {
+            return NSFont(name: psName, size: size)
+        }
+
+        let target = weight.appKitWeight
+        let best = upright.min {
+            abs(($0[2] as? Int ?? 5) - target) < abs(($1[2] as? Int ?? 5) - target)
+        }
+        return (best?[0] as? String).flatMap { NSFont(name: $0, size: size) }
+    }
+
     func adjustFontSize(by delta: CGFloat) {
         setFontSize(SettingsManager.shared.terminalFontSize + delta)
     }
 
-    /// Set an absolute font size on every live terminal and persist it.
-    /// Clamped to [minFontSize, maxFontSize]; no-ops if already at that size.
     func setFontSize(_ size: CGFloat) {
         let newSize = max(Self.minFontSize, min(Self.maxFontSize, size))
         guard newSize != SettingsManager.shared.terminalFontSize else { return }
         SettingsManager.shared.terminalFontSize = newSize
-        let font = makeTerminalFont(size: newSize)
+        applyFontToAllTerminals()
+    }
+
+    func setFontName(_ name: String?) {
+        SettingsManager.shared.terminalFontName = name
+        applyFontToAllTerminals()
+    }
+
+    func setFontWeight(_ weight: TerminalFontWeight) {
+        SettingsManager.shared.terminalFontWeight = weight
+        applyFontToAllTerminals()
+    }
+
+    func setLigaturesEnabled(_ enabled: Bool) {
+        SettingsManager.shared.terminalLigaturesEnabled = enabled
+        applyFontToAllTerminals()
+    }
+
+    private func applyFontToAllTerminals() {
+        let font = makeTerminalFont(size: SettingsManager.shared.terminalFontSize)
         for terminal in terminals.values {
             terminal.font = font
         }

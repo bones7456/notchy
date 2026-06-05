@@ -42,7 +42,7 @@ struct SettingsContentView: View {
                 .tabItem { Label(SettingsTab.about.rawValue, systemImage: SettingsTab.about.icon) }
                 .tag(SettingsTab.about)
         }
-        .frame(width: 520, height: 360)
+        .frame(width: 520, height: 440)
     }
 }
 
@@ -86,6 +86,17 @@ struct GeneralTab: View {
             }
 
             Section("Terminal") {
+                FontPickerRow()
+                FontWeightRow()
+                Toggle(isOn: Binding(
+                    get: { settings.terminalLigaturesEnabled },
+                    set: { TerminalManager.shared.setLigaturesEnabled($0) }
+                )) {
+                    Text("Ligatures")
+                    Text("Enable typographic ligature substitution (e.g. === as a connected glyph)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Toggle(isOn: $settings.selectionCopyEnabled) {
                     Text("Copy on selection")
                     Text("Mouse selection copies to clipboard automatically (iTerm2-style)")
@@ -141,6 +152,68 @@ struct BufferSizeRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+struct FontWeightRow: View {
+    @Bindable private var settings = SettingsManager.shared
+
+    private var weightBinding: Binding<TerminalFontWeight> {
+        Binding(
+            get: { settings.terminalFontWeight },
+            set: { TerminalManager.shared.setFontWeight($0) }
+        )
+    }
+
+    var body: some View {
+        Picker(selection: weightBinding) {
+            ForEach(TerminalFontWeight.allCases, id: \.self) { w in
+                Text(w.rawValue).tag(w)
+            }
+        } label: {
+            Text("Font weight")
+        }
+    }
+}
+
+struct FontPickerRow: View {
+    @Bindable private var settings = SettingsManager.shared
+    @State private var families: [String] = []
+
+    private var selected: Binding<String> {
+        Binding(
+            get: { settings.terminalFontName ?? "" },
+            set: { newValue in
+                TerminalManager.shared.setFontName(newValue.isEmpty ? nil : newValue)
+            }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Picker(selection: selected) {
+                Text("Default (Meslo Nerd Font)")
+                    .tag("")
+                Divider()
+                ForEach(families, id: \.self) { family in
+                    Text(family)
+                        .tag(family)
+                }
+            } label: {
+                Text("Font")
+            }
+            Text("Use ⌘+/⌘- to adjust size, ⌘0 to reset")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { loadFonts() }
+    }
+
+    private func loadFonts() {
+        families = NSFontManager.shared.availableFontFamilies.filter { family in
+            guard let font = NSFont(name: family, size: 13) else { return false }
+            return font.isFixedPitch || font.fontDescriptor.symbolicTraits.contains(.monoSpace)
+        }.sorted()
     }
 }
 
@@ -317,7 +390,7 @@ class SettingsWindowController {
         let hostingView = NSHostingView(rootView: content)
 
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 360),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 440),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false

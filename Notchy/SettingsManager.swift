@@ -1,5 +1,22 @@
 import Foundation
 
+enum TerminalFontWeight: String, CaseIterable {
+    case light = "Light"
+    case regular = "Regular"
+    case medium = "Medium"
+    case bold = "Bold"
+
+    // AppKit weight scale (0–14); used as numeric tie-breaker when no name match.
+    var appKitWeight: Int {
+        switch self {
+        case .light: return 3
+        case .regular: return 5
+        case .medium: return 7
+        case .bold: return 9
+        }
+    }
+}
+
 @Observable
 class SettingsManager {
     static let shared = SettingsManager()
@@ -43,8 +60,20 @@ class SettingsManager {
         didSet { UserDefaults.standard.set(externalDisplayTrigger, forKey: "externalDisplayTrigger") }
     }
 
+    var terminalFontName: String? {
+        didSet { UserDefaults.standard.set(terminalFontName, forKey: "terminalFontName") }
+    }
+
     var terminalFontSize: CGFloat {
         didSet { UserDefaults.standard.set(Double(terminalFontSize), forKey: "terminalFontSize") }
+    }
+
+    var terminalFontWeight: TerminalFontWeight {
+        didSet { UserDefaults.standard.set(terminalFontWeight.rawValue, forKey: "terminalFontWeight") }
+    }
+
+    var terminalLigaturesEnabled: Bool {
+        didSet { UserDefaults.standard.set(terminalLigaturesEnabled, forKey: "terminalLigaturesEnabled") }
     }
 
     static let minBufferSize = 500
@@ -76,6 +105,8 @@ class SettingsManager {
         if defaults.object(forKey: "selectionCopyEnabled") == nil { defaults.set(true, forKey: "selectionCopyEnabled") }
         if defaults.object(forKey: "externalDisplayTrigger") == nil { defaults.set(false, forKey: "externalDisplayTrigger") }
         if defaults.object(forKey: "terminalBufferSize") == nil { defaults.set(Self.defaultBufferSize, forKey: "terminalBufferSize") }
+        if defaults.object(forKey: "terminalFontWeight") == nil { defaults.set(TerminalFontWeight.regular.rawValue, forKey: "terminalFontWeight") }
+        if defaults.object(forKey: "terminalLigaturesEnabled") == nil { defaults.set(true, forKey: "terminalLigaturesEnabled") }
 
         showNotch = defaults.bool(forKey: "replaceNotch")
         soundsEnabled = defaults.bool(forKey: "soundsEnabled")
@@ -86,8 +117,11 @@ class SettingsManager {
         preferredAgent = AgentKind(rawValue: defaults.string(forKey: "preferredAgent") ?? "") ?? .claude
         selectionCopyEnabled = defaults.bool(forKey: "selectionCopyEnabled")
         externalDisplayTrigger = defaults.bool(forKey: "externalDisplayTrigger")
+        terminalFontName = defaults.string(forKey: "terminalFontName")
         let storedFontSize = defaults.double(forKey: "terminalFontSize")
         terminalFontSize = storedFontSize > 0 ? CGFloat(storedFontSize) : 13
+        terminalFontWeight = TerminalFontWeight(rawValue: defaults.string(forKey: "terminalFontWeight") ?? "") ?? .regular
+        terminalLigaturesEnabled = defaults.bool(forKey: "terminalLigaturesEnabled")
         let storedBufferSize = defaults.integer(forKey: "terminalBufferSize")
         terminalBufferSize = storedBufferSize > 0
             ? max(Self.minBufferSize, min(Self.maxBufferSize, storedBufferSize))
