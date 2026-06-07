@@ -18,10 +18,23 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		31844E352F7210B20074F7B7 /* Notchy */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BD0000070000000000000007 /* Exceptions for "Notchy" folder in "Notchy" target */,
+			);
 			path = Notchy;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BD0000070000000000000007 /* Exceptions for "Notchy" folder in "Notchy" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 31844E322F7210B20074F7B7 /* Notchy */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		31844E302F7210B20074F7B7 /* Frameworks */ = {
@@ -290,7 +303,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.2.7;
+				MARKETING_VERSION = 1.2.8;
 				PRODUCT_BUNDLE_IDENTIFIER = li.luy.notchy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -330,7 +343,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.2.7;
+				MARKETING_VERSION = 1.2.8;
 				PRODUCT_BUNDLE_IDENTIFIER = li.luy.notchy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

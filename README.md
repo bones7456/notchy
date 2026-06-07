@@ -15,6 +15,8 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **Pin tabs to persist** — right-click a `+` tab → **Pin Tab** to keep it across app restarts; Notchy remembers the tab's working directory and re-runs agent auto-launch on relaunch
 - **Shadow tabs** — right-click an Xcode or pinned tab → **Shadow Tab** to spawn a plain shell sibling cd'd into the same directory, for ad-hoc git/build commands without disturbing the agent
 - **Zoom terminal font** — Cmd+= (or Cmd++) and Cmd+− adjust the font size across all open terminals, Cmd+0 resets to default; the size is persisted across launches
+- **Font weight control** — Settings → General → Terminal → Font weight (Light / Regular / Medium / Bold) lets you compensate for SwiftTerm's heavier CoreGraphics rendering compared to iTerm2; picks the matching typeface variant from the installed font family
+- **Ligature toggle** — Settings → General → Terminal → Ligatures switches off OpenType `calt` and `liga` substitutions, so `===`, `=>`, `!=` etc. render as plain characters instead of combined glyphs
 - **Adjustable scrollback** — set the terminal history buffer in Settings → General → Terminal (default 1,000 lines, up to 50,000)
 - **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
 - **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes
@@ -28,6 +30,44 @@ Each tab has one of three kinds, indicated by a subtle border color:
 - **Plain `+` tab** (no border) — ephemeral. Stays around for the current session but is dropped on app restart. Pin it if you want it to stick.
 
 > Caveat: closing a tab only suppresses it within the current Notchy session — closing and reopening the floating panel, or restarting Notchy, will bring back any Xcode tab whose project is still open.
+
+### Shadow tabs
+
+A **shadow tab** is a plain shell tab spawned from an existing Xcode or pinned tab. It opens right next to its parent and `cd`s into the *same* directory the parent is currently in — it mirrors the parent shell's live working directory, so if you've `cd`'d somewhere deeper inside the agent's tab, the shadow lands there too. Unlike a normal tab, it skips the `claude`/`codex` auto-launch and just drops you at a prompt.
+
+The point is to give you a free shell alongside a running agent **without interrupting it**. The agent tab is usually busy — thinking, streaming output, or waiting for you to approve a step — and typing your own commands there would get in its way. A shadow tab lets you work in the project directory in parallel.
+
+Typical uses:
+
+- Run `git status` / `git diff` / `git log` to watch what the agent is changing
+- Kick off a build or test run while the agent keeps working
+- Inspect files, tail logs, or run one-off shell commands
+- Use git to review or roll back the agent's edits
+
+Create one from the tab context menu (**right-click an Xcode or pinned tab → Shadow Tab**) or with <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>. Shadow tabs are ephemeral `+` tabs — they're dropped on restart unless you pin them.
+
+## Keyboard shortcuts
+
+**Global** (works anywhere, even when Notchy isn't focused):
+
+| Shortcut | Action |
+|----------|--------|
+| <kbd>Ctrl</kbd>+<kbd>`</kbd> | Toggle the floating panel |
+
+**Inside the panel:**
+
+| Shortcut | Action |
+|----------|--------|
+| <kbd>Cmd</kbd>+<kbd>T</kbd> | New tab |
+| <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> | Shadow tab of the current tab (cd's into the same directory; Xcode/pinned tabs only) |
+| <kbd>Cmd</kbd>+<kbd>W</kbd> | Close the current tab |
+| <kbd>Cmd</kbd>+<kbd>1</kbd>…<kbd>9</kbd> | Jump to tab N |
+| <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> | Cycle to the next / previous tab |
+| <kbd>Cmd</kbd>+<kbd>P</kbd> | Pin / unpin the current tab |
+| <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Pin / unpin the whole panel (keeps it open when it loses focus) |
+| <kbd>Cmd</kbd>+<kbd>S</kbd> | Create a git checkpoint of the active project |
+| <kbd>Cmd</kbd>+<kbd>=</kbd> (or <kbd>Cmd</kbd>+<kbd>+</kbd>) / <kbd>Cmd</kbd>+<kbd>−</kbd> | Zoom the terminal font in / out |
+| <kbd>Cmd</kbd>+<kbd>0</kbd> | Reset the terminal font size |
 
 ## Requirements
 

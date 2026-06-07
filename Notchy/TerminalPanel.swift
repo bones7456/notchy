@@ -365,19 +365,43 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
                 return true
             }
         }
-        // Cmd+Shift+P: toggle pin window
+        // Cmd+Shift+P: toggle pin window. charactersIgnoringModifiers keeps the
+        // Shift case, so this arrives as "P" — compare case-insensitively.
         if event.modifierFlags.intersection([.command, .shift, .control, .option]) == [.command, .shift],
-           event.charactersIgnoringModifiers == "p" {
+           event.charactersIgnoringModifiers?.lowercased() == "p" {
             sessionStore.isPinned.toggle()
+            showCornerIndicator(sessionStore.isPinned ? "Window pinned" : "Window unpinned")
             return true
         }
         // Cmd+P: toggle pin current tab (only .normal ↔ .pinned)
         if event.modifierFlags.intersection([.command, .shift, .control, .option]) == .command,
            event.charactersIgnoringModifiers == "p" {
             if let id = sessionStore.activeSessionId,
+               let session = sessionStore.sessions.first(where: { $0.id == id }) {
+                switch session.kind {
+                case .normal:
+                    sessionStore.setPinned(id, pinned: true)
+                    showCornerIndicator("Tab pinned")
+                case .pinned:
+                    sessionStore.setPinned(id, pinned: false)
+                    showCornerIndicator("Tab unpinned")
+                case .xcode:
+                    showCornerIndicator("Can't pin")
+                }
+            }
+            return true
+        }
+        // Cmd+Shift+T: open a shadow tab of the current tab. Only .xcode/.pinned
+        // tabs can spawn a shadow (matching the tab context menu).
+        if event.modifierFlags.intersection([.command, .shift, .control, .option]) == [.command, .shift],
+           event.charactersIgnoringModifiers?.lowercased() == "t" {
+            if let id = sessionStore.activeSessionId,
                let session = sessionStore.sessions.first(where: { $0.id == id }),
-               session.kind == .normal || session.kind == .pinned {
-                sessionStore.setPinned(id, pinned: session.kind == .normal)
+               session.kind == .xcode || session.kind == .pinned {
+                sessionStore.createShadowSession(from: id)
+                showCornerIndicator("Shadow tab")
+            } else {
+                showCornerIndicator("Can't shadow")
             }
             return true
         }
