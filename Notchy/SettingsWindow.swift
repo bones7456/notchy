@@ -378,7 +378,7 @@ class SettingsWindowController {
     func show(tab: SettingsTab = .general, onShowNotchChanged: @escaping (Bool) -> Void, onExternalDisplayChanged: @escaping (Bool) -> Void) {
         if let existing = window {
             selection?.tab = tab
-            existing.level = .floating
+            existing.level = .normal
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -399,7 +399,7 @@ class SettingsWindowController {
         win.contentView = hostingView
         win.center()
         win.isReleasedWhenClosed = false
-        win.level = .floating
+        win.level = .normal
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
