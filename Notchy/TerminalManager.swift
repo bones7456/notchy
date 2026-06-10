@@ -262,6 +262,16 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
         let terminal = getTerminal()
+
+        // SwiftTerm's feedPrepare()/linefeed() clear the active selection on
+        // every incoming chunk, but only when allowMouseReporting is true.
+        // When the foreground app never requested mouse events (claude/codex
+        // leave mouseMode off), reporting is inert anyway, so disable it to
+        // keep the user's selection alive while output streams. TUIs that do
+        // request mouse events (vim with mouse=a, htop) flip mouseMode on and
+        // get reporting back on the next chunk.
+        allowMouseReporting = terminal.mouseMode != .off
+
         let wasAlternate = terminal.isCurrentBufferAlternate
         let preYDisp = terminal.buffer.yDisp
         // Only treat the viewport as "in scrollback" on the normal buffer.
