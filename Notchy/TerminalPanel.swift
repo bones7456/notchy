@@ -153,12 +153,18 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
             // auto-hide timer only starts once the user lets go.
             cornerIndicatorHideWork?.cancel()
             cornerIndicatorHideWork = nil
-            sessionStore.cornerIndicatorText = "\(Int(frame.width)) × \(Int(frame.height))"
+            sessionStore.cornerIndicatorText = "\(Int(frame.width)) × \(Int(frame.height))\(terminalDimSuffix())"
         }
     }
 
     @objc func windowDidEndLiveResize(_ notification: Notification) {
-        showCornerIndicator("\(Int(frame.width)) × \(Int(frame.height))")
+        showCornerIndicator("\(Int(frame.width)) × \(Int(frame.height))\(terminalDimSuffix())")
+    }
+
+    private func terminalDimSuffix() -> String {
+        guard let id = sessionStore.activeSessionId,
+              let dim = TerminalManager.shared.terminalDimensions(for: id) else { return "" }
+        return "  (\(dim.cols)×\(dim.rows))"
     }
 
     /// Show transient text next to the pin icon and clear it after 1s.
@@ -339,17 +345,17 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
            let chars = event.charactersIgnoringModifiers {
             if chars == "=" || chars == "+" {
                 TerminalManager.shared.adjustFontSize(by: 1)
-                showCornerIndicator("\(Int(SettingsManager.shared.terminalFontSize))pt")
+                showCornerIndicator("\(Int(SettingsManager.shared.terminalFontSize))pt\(terminalDimSuffix())")
                 return true
             }
             if chars == "-" {
                 TerminalManager.shared.adjustFontSize(by: -1)
-                showCornerIndicator("\(Int(SettingsManager.shared.terminalFontSize))pt")
+                showCornerIndicator("\(Int(SettingsManager.shared.terminalFontSize))pt\(terminalDimSuffix())")
                 return true
             }
             if chars == "0" {
                 TerminalManager.shared.setFontSize(TerminalManager.defaultFontSize)
-                showCornerIndicator("\(Int(SettingsManager.shared.terminalFontSize))pt")
+                showCornerIndicator("\(Int(SettingsManager.shared.terminalFontSize))pt\(terminalDimSuffix())")
                 return true
             }
         }

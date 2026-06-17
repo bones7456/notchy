@@ -765,6 +765,12 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         return terminal.extractVisibleText()
     }
 
+    func terminalDimensions(for sessionId: UUID) -> (cols: Int, rows: Int)? {
+        guard let terminal = terminals[sessionId] else { return nil }
+        let t = terminal.getTerminal()
+        return (t.cols, t.rows)
+    }
+
     func destroyTerminal(for sessionId: UUID) {
         terminals.removeValue(forKey: sessionId)
     }
