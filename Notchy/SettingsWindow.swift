@@ -50,6 +50,7 @@ struct GeneralTab: View {
     @Bindable private var settings = SettingsManager.shared
     var onShowNotchChanged: ((Bool) -> Void)?
     var onExternalDisplayChanged: ((Bool) -> Void)?
+    @State private var hasExternalDisplay: Bool = !NSScreen.externalScreens.isEmpty
 
     var body: some View {
         Form {
@@ -65,10 +66,13 @@ struct GeneralTab: View {
                 }
                 Toggle(isOn: $settings.externalDisplayTrigger) {
                     Text("External display trigger")
-                    Text("Hover the top-center of external displays to open the panel")
+                    Text(hasExternalDisplay
+                         ? "Hover the top-center of external displays to open the panel"
+                         : "No external display connected")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                .disabled(!hasExternalDisplay)
                 .onChange(of: settings.externalDisplayTrigger) { _, newValue in
                     onExternalDisplayChanged?(newValue)
                 }
@@ -108,6 +112,9 @@ struct GeneralTab: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            hasExternalDisplay = !NSScreen.externalScreens.isEmpty
+        }
     }
 }
 
