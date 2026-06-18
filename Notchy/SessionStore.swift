@@ -14,7 +14,16 @@ class SessionStore {
     static let shared = SessionStore()
 
     var sessions: [TerminalSession] = []
-    var activeSessionId: UUID?
+    var activeSessionId: UUID? {
+        didSet {
+            guard let newValue = activeSessionId, newValue != oldValue else { return }
+            activationHistory.removeAll { $0 == newValue }
+            activationHistory.append(newValue)
+        }
+    }
+    /// Stack of session IDs in the order they became active, most-recent last.
+    /// On close, the previously active tab (browser-style) is restored.
+    private var activationHistory: [UUID] = []
     var isPinned: Bool = {
         if UserDefaults.standard.object(forKey: "isPinned") == nil { return true }
         return UserDefaults.standard.bool(forKey: "isPinned")
@@ -534,8 +543,15 @@ class SessionStore {
         }
         TerminalManager.shared.destroyTerminal(for: id)
         sessions.removeAll { $0.id == id }
+        activationHistory.removeAll { $0 == id }
         if activeSessionId == id {
-            activeSessionId = sessions.first?.id
+            // Walk back through activation history to the most recently active
+            // tab that still exists — falling further back if those were
+            // closed too, like browser tab-close behavior.
+            while let last = activationHistory.last, !sessions.contains(where: { $0.id == last }) {
+                activationHistory.removeLast()
+            }
+            activeSessionId = activationHistory.last ?? sessions.first?.id
         }
         persistSessions()
     }
