@@ -9,6 +9,11 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private var hasNewData = false
     private var selectionCopyDebounceTimer: Timer?
 
+    // Tracks the pressure stage of the in-flight click so we fire the
+    // dictionary lookup exactly once on the transition into the deep-click
+    // stage (stage 2), not on every pressure sample.
+    private var lastPressureStage = 0
+
     // SwiftTerm forces yDisp back to yBase on every line scroll because its
     // `userScrolling` flag is never set from the scroll wheel path. We track
     // the live bottom (yBase) ourselves: after super.dataReceived runs, if
@@ -29,9 +34,94 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    // MARK: - Force-click dictionary lookup
+
+    /// The trackpad reports a rising pressure stage as the user presses
+    /// harder; stage 2 is the "force click" / deep press. We trigger the
+    /// system dictionary popover on the transition into stage 2 so it fires
+    /// once per deep press, matching Safari's "Look Up" gesture.
+    override func pressureChange(with event: NSEvent) {
+        super.pressureChange(with: event)
+        if event.stage >= 2 && lastPressureStage < 2 {
+            lookUpWord(at: event.locationInWindow)
+        }
+        lastPressureStage = event.stage
+    }
+
+    /// Characters that count as part of a "word" when expanding outward from
+    /// the force-clicked cell. Letters and digits, plus the in-word
+    /// punctuation that English entries use (e.g. `co-op`, `don't`).
+    private static let wordCharacters: CharacterSet = {
+        var set = CharacterSet.alphanumerics
+        set.insert(charactersIn: "-'’")
+        return set
+    }()
+
+    /// Resolve the word under `windowPoint` from the terminal buffer and hand
+    /// it to AppKit's `showDefinition(for:at:)`, which renders the same
+    /// dictionary popover Safari and Quick Look use.
+    private func lookUpWord(at windowPoint: NSPoint) {
+        guard SettingsManager.shared.forceTouchLookupEnabled else { return }
+
+        let point = convert(windowPoint, from: nil)
+        let cell = cellDimensions()
+        guard cell.width > 0, cell.height > 0 else { return }
+
+        let terminal = getTerminal()
+        let (cols, rows) = terminal.getDims()
+        let col = min(max(0, Int(point.x / cell.width)), cols - 1)
+        // View is not flipped: y grows upward, so the top row is at the top
+        // of the bounds. Match SwiftTerm's own hit-testing math.
+        let row = min(max(0, Int((frame.height - point.y) / cell.height)), rows - 1)
+
+        func wordChar(at c: Int) -> Character? {
+            guard let ch = terminal.getCharacter(col: c, row: row) else { return nil }
+            for scalar in ch.unicodeScalars where !Self.wordCharacters.contains(scalar) {
+                return nil
+            }
+            return ch
+        }
+
+        guard let hitChar = wordChar(at: col) else { return }
+
+        var startCol = col
+        while startCol > 0, wordChar(at: startCol - 1) != nil { startCol -= 1 }
+        var endCol = col
+        while endCol < cols - 1, wordChar(at: endCol + 1) != nil { endCol += 1 }
+
+        var word = ""
+        for c in startCol...endCol {
+            word.append(terminal.getCharacter(col: c, row: row) ?? hitChar)
+        }
+        let trimmed = word.trimmingCharacters(in: CharacterSet(charactersIn: "-'’"))
+        guard !trimmed.isEmpty else { return }
+
+        // showDefinition anchors at the text baseline (lower-left). Place it at
+        // the first cell of the word, one ascent below the cell's top edge.
+        let ascent = CTFontGetAscent(font as CTFont)
+        let baselineY = frame.height - CGFloat(row) * cell.height - ascent
+        let anchor = NSPoint(x: CGFloat(startCol) * cell.width, y: baselineY)
+        showDefinition(for: NSAttributedString(string: trimmed), at: anchor)
+    }
+
+    /// Replicates SwiftTerm's internal cell-dimension math (which isn't part
+    /// of its public API) so column/row hit-testing lines up with what's drawn.
+    private func cellDimensions() -> CGSize {
+        let ctFont = font as CTFont
+        let height = ceil(CTFontGetAscent(ctFont) + CTFontGetDescent(ctFont) + CTFontGetLeading(ctFont))
+        let glyph = font.glyph(withName: "W")
+        let width = font.advancement(forGlyph: glyph).width
+        let scale = window?.backingScaleFactor ?? 2
+        return CGSize(width: max(1, ceil(width * scale) / scale),
+                      height: max(1, ceil(height * scale) / scale))
+    }
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL])
+        // Opt into the trackpad's deep-click stage so `pressureChange` reports
+        // stage 2 (force click), which drives the dictionary lookup.
+        pressureConfiguration = NSPressureConfiguration(pressureBehavior: .primaryDeepClick)
         installArrowKeyMonitor()
         installScrollMonitor()
         startStatusTimer()
@@ -40,6 +130,9 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         registerForDraggedTypes([.fileURL])
+        // Opt into the trackpad's deep-click stage so `pressureChange` reports
+        // stage 2 (force click), which drives the dictionary lookup.
+        pressureConfiguration = NSPressureConfiguration(pressureBehavior: .primaryDeepClick)
         installArrowKeyMonitor()
         installScrollMonitor()
         startStatusTimer()

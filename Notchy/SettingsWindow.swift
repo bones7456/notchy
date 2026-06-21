@@ -107,6 +107,12 @@ struct GeneralTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Toggle(isOn: $settings.forceTouchLookupEnabled) {
+                    Text("Look up on force click")
+                    Text("Force-click (deep press) a word to show its dictionary definition")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 BufferSizeRow()
             }
         }

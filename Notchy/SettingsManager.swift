@@ -56,6 +56,12 @@ class SettingsManager {
         didSet { UserDefaults.standard.set(selectionCopyEnabled, forKey: "selectionCopyEnabled") }
     }
 
+    /// Force-click (deep press) on a word pops up the system dictionary
+    /// definition, mirroring Safari/Quick Look "Look Up".
+    var forceTouchLookupEnabled: Bool {
+        didSet { UserDefaults.standard.set(forceTouchLookupEnabled, forKey: "forceTouchLookupEnabled") }
+    }
+
     var externalDisplayTrigger: Bool {
         didSet { UserDefaults.standard.set(externalDisplayTrigger, forKey: "externalDisplayTrigger") }
     }
@@ -103,6 +109,7 @@ class SettingsManager {
         if defaults.object(forKey: "codexIntegrationEnabled") == nil { defaults.set(true, forKey: "codexIntegrationEnabled") }
         if defaults.object(forKey: "preferredAgent") == nil { defaults.set(AgentKind.claude.rawValue, forKey: "preferredAgent") }
         if defaults.object(forKey: "selectionCopyEnabled") == nil { defaults.set(true, forKey: "selectionCopyEnabled") }
+        if defaults.object(forKey: "forceTouchLookupEnabled") == nil { defaults.set(true, forKey: "forceTouchLookupEnabled") }
         if defaults.object(forKey: "externalDisplayTrigger") == nil { defaults.set(false, forKey: "externalDisplayTrigger") }
         if defaults.object(forKey: "terminalBufferSize") == nil { defaults.set(Self.defaultBufferSize, forKey: "terminalBufferSize") }
         if defaults.object(forKey: "terminalFontWeight") == nil { defaults.set(TerminalFontWeight.regular.rawValue, forKey: "terminalFontWeight") }
@@ -116,6 +123,7 @@ class SettingsManager {
         codexIntegrationEnabled = defaults.bool(forKey: "codexIntegrationEnabled")
         preferredAgent = AgentKind(rawValue: defaults.string(forKey: "preferredAgent") ?? "") ?? .claude
         selectionCopyEnabled = defaults.bool(forKey: "selectionCopyEnabled")
+        forceTouchLookupEnabled = defaults.bool(forKey: "forceTouchLookupEnabled")
         externalDisplayTrigger = defaults.bool(forKey: "externalDisplayTrigger")
         terminalFontName = defaults.string(forKey: "terminalFontName")
         let storedFontSize = defaults.double(forKey: "terminalFontSize")

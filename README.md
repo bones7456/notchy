@@ -17,6 +17,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **Zoom terminal font** — Cmd+= (or Cmd++) and Cmd+− adjust the font size across all open terminals, Cmd+0 resets to default; the size is persisted across launches
 - **Font weight control** — Settings → General → Terminal → Font weight (Light / Regular / Medium / Bold) lets you compensate for SwiftTerm's heavier CoreGraphics rendering compared to iTerm2; picks the matching typeface variant from the installed font family
 - **Ligature toggle** — Settings → General → Terminal → Ligatures switches off OpenType `calt` and `liga` substitutions, so `===`, `=>`, `!=` etc. render as plain characters instead of combined glyphs
+- **Force-click to look up** — deep-press a word in the terminal to pop up its system dictionary definition, just like Safari's Look Up; toggle via Settings → General → Terminal → Look up on force click
 - **Adjustable scrollback** — set the terminal history buffer in Settings → General → Terminal (default 1,000 lines, up to 50,000)
 - **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
 - **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes
