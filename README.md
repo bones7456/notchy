@@ -18,6 +18,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **Font weight control** — Settings → General → Terminal → Font weight (Light / Regular / Medium / Bold) lets you compensate for SwiftTerm's heavier CoreGraphics rendering compared to iTerm2; picks the matching typeface variant from the installed font family
 - **Ligature toggle** — Settings → General → Terminal → Ligatures switches off OpenType `calt` and `liga` substitutions, so `===`, `=>`, `!=` etc. render as plain characters instead of combined glyphs
 - **Force-click to look up** — deep-press a word in the terminal to pop up its system dictionary definition, just like Safari's Look Up; toggle via Settings → General → Terminal → Look up on force click
+- **Right-click menu** — right-click in the terminal for Copy / Paste / Select All, look up or web-search the selection (or the word under the cursor), open a URL under the cursor, and clear the screen
 - **Adjustable scrollback** — set the terminal history buffer in Settings → General → Terminal (default 1,000 lines, up to 50,000)
 - **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
 - **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes
@@ -46,6 +47,19 @@ Typical uses:
 - Use git to review or roll back the agent's edits
 
 Create one from the tab context menu (**right-click an Xcode or pinned tab → Shadow Tab**) or with <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>. Shadow tabs are ephemeral `+` tabs — they're dropped on restart unless you pin them.
+
+### Terminal right-click menu
+
+Right-click anywhere in a terminal for an iTerm2-style context menu:
+
+- **Copy / Paste / Select All** — Copy is enabled only when there's a selection; Paste only when the clipboard holds text.
+- **Look Up "…"** — pops up the same system dictionary definition as force-click. Acts on the current selection, or the word under the cursor if nothing is selected.
+- **Search the Web for "…"** — opens a Google search for the selection (or the word under the cursor) in your browser.
+- **Open "…"** — appears when there's a link under the cursor (or a selected URL); opens it in your default browser.
+- **Reveal in Finder / Copy Working Directory** — act on the session's live working directory (resolved from the running shell), so they follow you as you `cd` around.
+- **Clear screen** — sends Ctrl-L so the running shell or agent clears and redraws.
+
+The tab context menu (right-click a tab) also gains **Create Checkpoint** — a git snapshot of the tab's project, the same action as <kbd>Cmd</kbd>+<kbd>S</kbd>; shown only for tabs that have a project directory.
 
 ## Keyboard shortcuts
 

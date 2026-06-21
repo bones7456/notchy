@@ -128,11 +128,22 @@ struct SessionTab: View {
         .onTapGesture(perform: onSelect)
         .overlay(MiddleClickView { onClose() })
         .contextMenu {
+            // Project actions derived from this tab's directory. Checkpoint is
+            // a common pre-edit safety net, so it leads; only meaningful for
+            // tabs that have a project path.
+            if session.projectPath != nil {
+                Button("Create Checkpoint") {
+                    SessionStore.shared.createCheckpoint(for: session.id)
+                }
+            }
             Button("Shadow Tab") {
                 SessionStore.shared.createShadowSession(from: session.id)
             }
             .disabled(session.kind == .normal)
 
+            Divider()
+
+            // Tab management.
             if session.kind == .normal {
                 Button("Pin Tab") {
                     SessionStore.shared.setPinned(session.id, pinned: true)
@@ -146,6 +157,8 @@ struct SessionTab: View {
             Button("Rename Tab") {
                 showRenameAlert()
             }
+
+            Divider()
 
             Button("Close", role: .destructive) {
                 onClose()

@@ -14,6 +14,14 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     // stage (stage 2), not on every pressure sample.
     private var lastPressureStage = 0
 
+    // Values resolved while building the right-click context menu and consumed
+    // by its action handlers. Set fresh on every `menu(for:)`; nil clears the
+    // corresponding menu item.
+    private var pendingLookup: (term: String, anchor: NSPoint)?
+    private var pendingSearchText: String?
+    private var pendingURL: URL?
+    private var pendingCWD: String?
+
     // SwiftTerm forces yDisp back to yBase on every line scroll because its
     // `userScrolling` flag is never set from the scroll wheel path. We track
     // the live bottom (yBase) ourselves: after super.dataReceived runs, if
@@ -57,51 +65,271 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         return set
     }()
 
-    /// Resolve the word under `windowPoint` from the terminal buffer and hand
-    /// it to AppKit's `showDefinition(for:at:)`, which renders the same
-    /// dictionary popover Safari and Quick Look use.
-    private func lookUpWord(at windowPoint: NSPoint) {
-        guard SettingsManager.shared.forceTouchLookupEnabled else { return }
+    /// Characters that may appear inside a URL token. Used to expand outward
+    /// from the clicked cell when resolving "Open URL" from the context menu.
+    private static let urlCharacters: CharacterSet = {
+        var set = CharacterSet.alphanumerics
+        set.insert(charactersIn: "-._~:/?#[]@!$&'()*+,;=%")
+        return set
+    }()
 
+    /// Map a point in window coordinates to the terminal cell under it,
+    /// returning the column/row and the cell size used for the hit test.
+    /// View is not flipped: y grows upward, so row 0 is at the top of the
+    /// bounds. Matches SwiftTerm's own hit-testing math.
+    private func hitCell(at windowPoint: NSPoint) -> (col: Int, row: Int, cell: CGSize)? {
         let point = convert(windowPoint, from: nil)
         let cell = cellDimensions()
-        guard cell.width > 0, cell.height > 0 else { return }
-
-        let terminal = getTerminal()
-        let (cols, rows) = terminal.getDims()
+        guard cell.width > 0, cell.height > 0 else { return nil }
+        let (cols, rows) = getTerminal().getDims()
         let col = min(max(0, Int(point.x / cell.width)), cols - 1)
-        // View is not flipped: y grows upward, so the top row is at the top
-        // of the bounds. Match SwiftTerm's own hit-testing math.
         let row = min(max(0, Int((frame.height - point.y) / cell.height)), rows - 1)
+        return (col, row, cell)
+    }
 
-        func wordChar(at c: Int) -> Character? {
+    /// Expand outward from `col` on `row`, collecting the run of cells whose
+    /// characters all belong to `allowed`. Returns the joined text and the
+    /// starting column, or nil if the clicked cell itself is not in `allowed`.
+    private func expandToken(row: Int, col: Int, allowed: CharacterSet) -> (text: String, startCol: Int)? {
+        let terminal = getTerminal()
+        let (cols, _) = terminal.getDims()
+
+        func tokenChar(at c: Int) -> Character? {
             guard let ch = terminal.getCharacter(col: c, row: row) else { return nil }
-            for scalar in ch.unicodeScalars where !Self.wordCharacters.contains(scalar) {
+            for scalar in ch.unicodeScalars where !allowed.contains(scalar) {
                 return nil
             }
             return ch
         }
 
-        guard let hitChar = wordChar(at: col) else { return }
+        guard tokenChar(at: col) != nil else { return nil }
 
         var startCol = col
-        while startCol > 0, wordChar(at: startCol - 1) != nil { startCol -= 1 }
+        while startCol > 0, tokenChar(at: startCol - 1) != nil { startCol -= 1 }
         var endCol = col
-        while endCol < cols - 1, wordChar(at: endCol + 1) != nil { endCol += 1 }
+        while endCol < cols - 1, tokenChar(at: endCol + 1) != nil { endCol += 1 }
 
-        var word = ""
+        var text = ""
         for c in startCol...endCol {
-            word.append(terminal.getCharacter(col: c, row: row) ?? hitChar)
+            text.append(terminal.getCharacter(col: c, row: row) ?? " ")
         }
-        let trimmed = word.trimmingCharacters(in: CharacterSet(charactersIn: "-'’"))
-        guard !trimmed.isEmpty else { return }
+        return (text, startCol)
+    }
+
+    /// Resolve the word under `windowPoint` plus the screen anchor where its
+    /// definition popover should appear (the word's first-cell baseline).
+    private func wordInfo(at windowPoint: NSPoint) -> (word: String, anchor: NSPoint)? {
+        guard let hit = hitCell(at: windowPoint),
+              let token = expandToken(row: hit.row, col: hit.col, allowed: Self.wordCharacters) else {
+            return nil
+        }
+        let trimmed = token.text.trimmingCharacters(in: CharacterSet(charactersIn: "-'’"))
+        guard !trimmed.isEmpty else { return nil }
 
         // showDefinition anchors at the text baseline (lower-left). Place it at
         // the first cell of the word, one ascent below the cell's top edge.
         let ascent = CTFontGetAscent(font as CTFont)
-        let baselineY = frame.height - CGFloat(row) * cell.height - ascent
-        let anchor = NSPoint(x: CGFloat(startCol) * cell.width, y: baselineY)
-        showDefinition(for: NSAttributedString(string: trimmed), at: anchor)
+        let baselineY = frame.height - CGFloat(hit.row) * hit.cell.height - ascent
+        let anchor = NSPoint(x: CGFloat(token.startCol) * hit.cell.width, y: baselineY)
+        return (trimmed, anchor)
+    }
+
+    /// Resolve a web/file URL under `windowPoint`, if the token there parses as
+    /// one with a recognized scheme.
+    private func urlUnderCursor(at windowPoint: NSPoint) -> URL? {
+        guard let hit = hitCell(at: windowPoint),
+              let token = expandToken(row: hit.row, col: hit.col, allowed: Self.urlCharacters) else {
+            return nil
+        }
+        return Self.parseURL(token.text)
+    }
+
+    /// Parse `raw` into a URL with an openable scheme, stripping trailing
+    /// punctuation that commonly butts up against links in terminal output.
+    static func parseURL(_ raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:)]}'\"" ))
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https", "ftp", "file"].contains(scheme) else {
+            return nil
+        }
+        return url
+    }
+
+    /// Resolve the word under `windowPoint` from the terminal buffer and hand
+    /// it to AppKit's `showDefinition(for:at:)`, which renders the same
+    /// dictionary popover Safari and Quick Look use.
+    private func lookUpWord(at windowPoint: NSPoint) {
+        guard SettingsManager.shared.forceTouchLookupEnabled else { return }
+        guard let info = wordInfo(at: windowPoint) else { return }
+        showDefinition(for: NSAttributedString(string: info.word), at: info.anchor)
+    }
+
+    // MARK: - Right-click context menu
+
+    /// Build an iTerm2-style context menu on right-click. SwiftTerm provides no
+    /// menu of its own, so AppKit shows whatever we return here. Items that
+    /// depend on context (a selection, a word/URL under the cursor) resolve
+    /// their target up front and stash it for the action handler; absent
+    /// context, the item is omitted or disabled.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        // Right-clicking doesn't make the view first responder on its own, but
+        // copy/paste and the IME path expect it to be.
+        window?.makeFirstResponder(self)
+
+        let point = event.locationInWindow
+        let selection = getSelection()?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasSelection = !(selection?.isEmpty ?? true)
+
+        let menu = NSMenu()
+        // SwiftTerm's superclass implements validateUserInterfaceItem and
+        // returns false for any selector it doesn't recognize, which would
+        // disable every one of our custom items. Manage enablement ourselves.
+        menu.autoenablesItems = false
+
+        // Edit group: the highest-frequency actions, kept at the top so they
+        // sit closest to the cursor when the menu pops open.
+        let copyItem = NSMenuItem(
+            title: "Copy",
+            action: #selector(contextCopy),
+            keyEquivalent: "c")
+        copyItem.keyEquivalentModifierMask = .command
+        copyItem.target = self
+        copyItem.isEnabled = hasSelection
+        menu.addItem(copyItem)
+
+        let canPaste = NSPasteboard.general.string(forType: .string) != nil
+        let pasteItem = NSMenuItem(
+            title: "Paste",
+            action: #selector(contextPaste),
+            keyEquivalent: "v")
+        pasteItem.keyEquivalentModifierMask = .command
+        pasteItem.target = self
+        pasteItem.isEnabled = canPaste
+        menu.addItem(pasteItem)
+
+        let selectAllItem = NSMenuItem(
+            title: "Select All",
+            action: #selector(contextSelectAll),
+            keyEquivalent: "a")
+        selectAllItem.keyEquivalentModifierMask = .command
+        selectAllItem.target = self
+        menu.addItem(selectAllItem)
+
+        // Content group: look up / search / open operate on the selection if
+        // there is one, otherwise on the word/URL under the cursor.
+        let word = wordInfo(at: point)
+        let lookupTerm = hasSelection ? selection : word?.word
+        pendingLookup = lookupTerm.map { term in
+            (term, hasSelection ? convert(point, from: nil) : (word?.anchor ?? convert(point, from: nil)))
+        }
+        pendingSearchText = hasSelection ? selection : word?.word
+        pendingURL = hasSelection ? Self.parseURL(selection ?? "") : urlUnderCursor(at: point)
+
+        if pendingLookup != nil || pendingSearchText != nil || pendingURL != nil {
+            menu.addItem(.separator())
+        }
+
+        if let term = pendingLookup?.term {
+            let item = NSMenuItem(
+                title: "Look Up “\(menuSnippet(term))”",
+                action: #selector(contextLookUp), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+
+        if let text = pendingSearchText {
+            let item = NSMenuItem(
+                title: "Search the Web for “\(menuSnippet(text))”",
+                action: #selector(contextSearchWeb), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+
+        if let url = pendingURL {
+            let item = NSMenuItem(
+                title: "Open “\(menuSnippet(url.absoluteString))”",
+                action: #selector(contextOpenURL), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+
+        // Directory group: actions on the session's current working directory.
+        // Resolved from the live shell pid, so absent only when the terminal
+        // hasn't started or the pid lookup fails.
+        pendingCWD = sessionId.flatMap { TerminalManager.shared.currentWorkingDirectory(for: $0) }
+        if pendingCWD != nil {
+            menu.addItem(.separator())
+
+            let revealItem = NSMenuItem(
+                title: "Reveal in Finder",
+                action: #selector(contextRevealInFinder), keyEquivalent: "")
+            revealItem.target = self
+            menu.addItem(revealItem)
+
+            let copyPathItem = NSMenuItem(
+                title: "Copy Working Directory",
+                action: #selector(contextCopyWorkingDirectory), keyEquivalent: "")
+            copyPathItem.target = self
+            menu.addItem(copyPathItem)
+        }
+
+        // Misc group: low-frequency, kept at the bottom.
+        menu.addItem(.separator())
+
+        let clearItem = NSMenuItem(
+            title: "Clear",
+            action: #selector(contextClearScreen), keyEquivalent: "")
+        clearItem.target = self
+        menu.addItem(clearItem)
+
+        return menu
+    }
+
+    /// Collapse newlines and clip long strings so menu titles stay readable.
+    private func menuSnippet(_ text: String, max: Int = 32) -> String {
+        let collapsed = text.replacingOccurrences(of: "\n", with: " ")
+        return collapsed.count <= max ? collapsed : String(collapsed.prefix(max)) + "…"
+    }
+
+    @objc private func contextCopy() { copy(self) }
+    @objc private func contextPaste() { paste(self) }
+    @objc private func contextSelectAll() { selectAll(nil) }
+
+    @objc private func contextLookUp() {
+        guard let lookup = pendingLookup else { return }
+        showDefinition(for: NSAttributedString(string: lookup.term), at: lookup.anchor)
+    }
+
+    @objc private func contextSearchWeb() {
+        guard let text = pendingSearchText,
+              let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://www.google.com/search?q=\(encoded)") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func contextOpenURL() {
+        guard let url = pendingURL else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func contextRevealInFinder() {
+        guard let path = pendingCWD else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
+    @objc private func contextCopyWorkingDirectory() {
+        guard let path = pendingCWD else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(path, forType: .string)
+    }
+
+    /// Send Ctrl-L so the running shell or TUI clears and redraws. This is the
+    /// pragmatic "clear" for an agent-driven terminal — an emulator-side reset
+    /// would desync a foreground program that owns the screen.
+    @objc private func contextClearScreen() {
+        send(txt: "\u{0c}")
     }
 
     /// Replicates SwiftTerm's internal cell-dimension math (which isn't part
