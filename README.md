@@ -19,6 +19,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **Ligature toggle** — Settings → General → Terminal → Ligatures switches off OpenType `calt` and `liga` substitutions, so `===`, `=>`, `!=` etc. render as plain characters instead of combined glyphs
 - **Force-click to look up** — deep-press a word in the terminal to pop up its system dictionary definition, just like Safari's Look Up; toggle via Settings → General → Terminal → Look up on force click
 - **Right-click menu** — right-click in the terminal for Copy / Paste / Select All, look up or web-search the selection (or the word under the cursor), open a URL under the cursor, and clear the screen
+- **Per-tab input source** — each tab remembers its own keyboard input method, so a CLAUDE.md tab can stay on a CJK input source while a shadow tab defaults to English; switches automatically as you change tabs and leaves other apps' input source untouched. Toggle via Settings → General → Terminal → Per-tab input source
 - **Adjustable scrollback** — set the terminal history buffer in Settings → General → Terminal (default 1,000 lines, up to 50,000)
 - **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
 - **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes

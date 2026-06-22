@@ -299,8 +299,13 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
     }
 
     @objc func windowDidResignKey(_ notification: Notification) {
-        if !sessionStore.isPinned && !sessionStore.isShowingDialog && attachedSheet == nil && childWindows?.isEmpty ?? true {
-            hidePanel()
+        // Focus moving to an in-Notchy sheet/dialog isn't really "leaving".
+        let focusStillInNotchy = sessionStore.isShowingDialog || attachedSheet != nil || !(childWindows?.isEmpty ?? true)
+        if !focusStillInNotchy {
+            sessionStore.panelDidResignKey()
+            if !sessionStore.isPinned {
+                hidePanel()
+            }
         }
         updateOpacity()
     }

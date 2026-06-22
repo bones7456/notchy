@@ -82,6 +82,12 @@ class SettingsManager {
         didSet { UserDefaults.standard.set(terminalLigaturesEnabled, forKey: "terminalLigaturesEnabled") }
     }
 
+    /// Give each tab its own keyboard input source: switching tabs restores the
+    /// input method that tab was last left in; new "+" tabs default to English.
+    var perTabInputSourceEnabled: Bool {
+        didSet { UserDefaults.standard.set(perTabInputSourceEnabled, forKey: "perTabInputSourceEnabled") }
+    }
+
     static let minBufferSize = 500
     static let maxBufferSize = 50000
     static let defaultBufferSize = 1000
@@ -114,6 +120,7 @@ class SettingsManager {
         if defaults.object(forKey: "terminalBufferSize") == nil { defaults.set(Self.defaultBufferSize, forKey: "terminalBufferSize") }
         if defaults.object(forKey: "terminalFontWeight") == nil { defaults.set(TerminalFontWeight.regular.rawValue, forKey: "terminalFontWeight") }
         if defaults.object(forKey: "terminalLigaturesEnabled") == nil { defaults.set(true, forKey: "terminalLigaturesEnabled") }
+        if defaults.object(forKey: "perTabInputSourceEnabled") == nil { defaults.set(true, forKey: "perTabInputSourceEnabled") }
 
         showNotch = defaults.bool(forKey: "replaceNotch")
         soundsEnabled = defaults.bool(forKey: "soundsEnabled")
@@ -130,6 +137,7 @@ class SettingsManager {
         terminalFontSize = storedFontSize > 0 ? CGFloat(storedFontSize) : 13
         terminalFontWeight = TerminalFontWeight(rawValue: defaults.string(forKey: "terminalFontWeight") ?? "") ?? .regular
         terminalLigaturesEnabled = defaults.bool(forKey: "terminalLigaturesEnabled")
+        perTabInputSourceEnabled = defaults.bool(forKey: "perTabInputSourceEnabled")
         let storedBufferSize = defaults.integer(forKey: "terminalBufferSize")
         terminalBufferSize = storedBufferSize > 0
             ? max(Self.minBufferSize, min(Self.maxBufferSize, storedBufferSize))

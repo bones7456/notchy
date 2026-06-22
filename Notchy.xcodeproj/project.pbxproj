@@ -15,6 +15,16 @@
 		31844E332F7210B20074F7B7 /* Notchy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Notchy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BD0000070000000000000007 /* Exceptions for "Notchy" folder in "Notchy" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 31844E322F7210B20074F7B7 /* Notchy */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		31844E352F7210B20074F7B7 /* Notchy */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -25,16 +35,6 @@
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
-
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		BD0000070000000000000007 /* Exceptions for "Notchy" folder in "Notchy" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 31844E322F7210B20074F7B7 /* Notchy */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		31844E302F7210B20074F7B7 /* Frameworks */ = {

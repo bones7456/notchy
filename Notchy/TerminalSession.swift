@@ -86,6 +86,9 @@ struct TerminalSession: Identifiable {
     /// When the session most recently entered the .working state
     var workingStartedAt: Date?
     var kind: TabKind
+    /// TIS input source ID this tab was last left in, restored on re-select.
+    /// nil until the tab has been visited (see SessionStore input-source logic).
+    var inputSource: String?
 
     var displayName: String { customName ?? projectName }
 
@@ -117,6 +120,7 @@ struct TerminalSession: Identifiable {
         self.createdAt = Date()
         // Migration: older persisted records have no kind — infer from projectPath
         self.kind = persisted.kind ?? (persisted.projectPath != nil ? .xcode : .normal)
+        self.inputSource = persisted.inputSource
     }
 }
 
@@ -128,4 +132,5 @@ struct PersistedSession: Codable {
     let projectPath: String?
     let workingDirectory: String
     let kind: TabKind?
+    let inputSource: String?
 }

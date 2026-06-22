@@ -113,6 +113,12 @@ struct GeneralTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Toggle(isOn: $settings.perTabInputSourceEnabled) {
+                    Text("Per-tab input source")
+                    Text("Each tab remembers its own keyboard input method; new \"+\" tabs default to English")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 BufferSizeRow()
             }
         }

@@ -19,11 +19,25 @@ class SessionStore {
             guard let newValue = activeSessionId, newValue != oldValue else { return }
             activationHistory.removeAll { $0 == newValue }
             activationHistory.append(newValue)
+            // Per-tab input source: hand the outgoing tab's live input method off
+            // to the incoming tab. Only while the panel holds focus, so we never
+            // change the system input source out from under another app.
+            if SettingsManager.shared.perTabInputSourceEnabled && isPanelKey {
+                captureInputSource(into: oldValue)
+                applyInputSource(for: newValue)
+            }
         }
     }
     /// Stack of session IDs in the order they became active, most-recent last.
     /// On close, the previously active tab (browser-style) is restored.
     private var activationHistory: [UUID] = []
+
+    /// True while the terminal panel is the key window. Gates per-tab input
+    /// source switching so we only touch the system input source while focused.
+    private var isPanelKey = false
+    /// Input source in effect outside Notchy, captured when the panel gains
+    /// focus and restored when it loses focus, so other apps keep their IME.
+    private var externalInputSource: String?
     var isPinned: Bool = {
         if UserDefaults.standard.object(forKey: "isPinned") == nil { return true }
         return UserDefaults.standard.bool(forKey: "isPinned")
@@ -121,7 +135,7 @@ class SessionStore {
         // Normal "+" tabs are ephemeral by design — only xcode and pinned tabs survive a restart.
         let persisted = sessions
             .filter { $0.kind != .normal }
-            .map { PersistedSession(id: $0.id, projectName: $0.projectName, customName: $0.customName, projectPath: $0.projectPath, workingDirectory: $0.workingDirectory, kind: $0.kind) }
+            .map { PersistedSession(id: $0.id, projectName: $0.projectName, customName: $0.customName, projectPath: $0.projectPath, workingDirectory: $0.workingDirectory, kind: $0.kind, inputSource: $0.inputSource) }
         if let data = try? JSONEncoder().encode(persisted) {
             UserDefaults.standard.set(data, forKey: Self.sessionsKey)
         }
@@ -154,6 +168,49 @@ class SessionStore {
     /// Called when the panel gains focus — trigger a fresh Xcode scan
     func panelDidBecomeKey() {
         detectAllXcodeProjectsAsync()
+        let wasKey = isPanelKey
+        isPanelKey = true
+        // Skip when returning from an in-Notchy sheet/dialog (already key) so we
+        // don't clobber the saved external source with our own applied one.
+        guard SettingsManager.shared.perTabInputSourceEnabled, !wasKey else { return }
+        externalInputSource = InputSourceManager.currentSourceID()
+        applyInputSource(for: activeSessionId)
+    }
+
+    /// Called when the panel truly loses focus to another app (not an in-Notchy
+    /// sheet). Remembers the active tab's input source and restores the external
+    /// app's input source so we never leave another app stuck in English.
+    func panelDidResignKey() {
+        isPanelKey = false
+        guard SettingsManager.shared.perTabInputSourceEnabled else { return }
+        captureInputSource(into: activeSessionId)
+        if let external = externalInputSource {
+            InputSourceManager.select(id: external)
+            externalInputSource = nil
+        }
+    }
+
+    /// Save the live system input source into the given tab's record.
+    private func captureInputSource(into sessionID: UUID?) {
+        guard let id = sessionID,
+              let index = sessions.firstIndex(where: { $0.id == id }),
+              let current = InputSourceManager.currentSourceID(),
+              sessions[index].inputSource != current else { return }
+        sessions[index].inputSource = current
+        persistSessions()
+    }
+
+    /// Switch the system input source to match the given tab. A never-visited
+    /// "+" tab defaults to English; xcode/pinned tabs inherit the current source
+    /// on first visit (and remember whatever they're left in thereafter).
+    private func applyInputSource(for sessionID: UUID?) {
+        guard let id = sessionID,
+              let session = sessions.first(where: { $0.id == id }) else { return }
+        if let saved = session.inputSource {
+            InputSourceManager.select(id: saved)
+        } else if session.kind == .normal {
+            InputSourceManager.selectASCIICapable()
+        }
     }
 
     /// Scans for all open Xcode projects — adds new ones, updates active set.
