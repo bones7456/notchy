@@ -4,11 +4,13 @@ import AppKit
 enum SettingsTab: String, CaseIterable {
     case about = "About"
     case general = "General"
+    case terminal = "Terminal"
     case integrations = "Integrations"
 
     var icon: String {
         switch self {
         case .general: return "gearshape"
+        case .terminal: return "terminal"
         case .integrations: return "puzzlepiece"
         case .about: return "info.circle"
         }
@@ -33,6 +35,10 @@ struct SettingsContentView: View {
             GeneralTab(onShowNotchChanged: onShowNotchChanged, onExternalDisplayChanged: onExternalDisplayChanged)
                 .tabItem { Label(SettingsTab.general.rawValue, systemImage: SettingsTab.general.icon) }
                 .tag(SettingsTab.general)
+
+            TerminalTab()
+                .tabItem { Label(SettingsTab.terminal.rawValue, systemImage: SettingsTab.terminal.icon) }
+                .tag(SettingsTab.terminal)
 
             IntegrationsTab()
                 .tabItem { Label(SettingsTab.integrations.rawValue, systemImage: SettingsTab.integrations.icon) }
@@ -88,7 +94,20 @@ struct GeneralTab: View {
                 }
                 .disabled(!settings.soundsEnabled)
             }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            hasExternalDisplay = !NSScreen.externalScreens.isEmpty
+        }
+    }
+}
 
+struct TerminalTab: View {
+    @Bindable private var settings = SettingsManager.shared
+
+    var body: some View {
+        Form {
             Section("Terminal") {
                 FontPickerRow()
                 FontWeightRow()
@@ -124,9 +143,6 @@ struct GeneralTab: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
-            hasExternalDisplay = !NSScreen.externalScreens.isEmpty
-        }
     }
 }
 
