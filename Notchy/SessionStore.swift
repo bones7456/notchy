@@ -28,6 +28,7 @@ class SessionStore {
             }
         }
     }
+
     /// Stack of session IDs in the order they became active, most-recent last.
     /// On close, the previously active tab (browser-style) is restored.
     private var activationHistory: [UUID] = []
@@ -170,10 +171,16 @@ class SessionStore {
         detectAllXcodeProjectsAsync()
         let wasKey = isPanelKey
         isPanelKey = true
-        // Skip when returning from an in-Notchy sheet/dialog (already key) so we
-        // don't clobber the saved external source with our own applied one.
-        guard SettingsManager.shared.perTabInputSourceEnabled, !wasKey else { return }
-        externalInputSource = InputSourceManager.currentSourceID()
+        guard SettingsManager.shared.perTabInputSourceEnabled else { return }
+        // Only record the external app's source on a real outside→panel
+        // transition. Returning from an in-Notchy sheet/dialog (already key)
+        // must not capture the sheet's source as "external". But always re-apply
+        // the active tab's source so focus lands back on the right input method
+        // even if an earlier resign was missed (e.g. focus left via a sheet and
+        // then went to another app, so our own resignKey never fired).
+        if !wasKey {
+            externalInputSource = InputSourceManager.currentSourceID()
+        }
         applyInputSource(for: activeSessionId)
     }
 
@@ -181,6 +188,12 @@ class SessionStore {
     /// sheet). Remembers the active tab's input source and restores the external
     /// app's input source so we never leave another app stuck in English.
     func panelDidResignKey() {
+        // Idempotent: didResignKey can fire more than once for a single focus
+        // loss (app switch, Mission Control, orderOut). A second pass would run
+        // captureInputSource *after* we already restored the external source
+        // below — recording the outside app's (often CJK) source into the still-
+        // active tab, silently poisoning e.g. an English shadow tab.
+        guard isPanelKey else { return }
         isPanelKey = false
         guard SettingsManager.shared.perTabInputSourceEnabled else { return }
         captureInputSource(into: activeSessionId)
@@ -204,6 +217,10 @@ class SessionStore {
     /// "+" tab defaults to English; xcode/pinned tabs inherit the current source
     /// on first visit (and remember whatever they're left in thereafter).
     private func applyInputSource(for sessionID: UUID?) {
+        // Never change the global input source unless a Notchy panel is truly
+        // the key window at this instant. Guards against a stale `isPanelKey`
+        // flipping another app's input method out from under it.
+        guard NSApp.keyWindow is TerminalPanel else { return }
         guard let id = sessionID,
               let session = sessions.first(where: { $0.id == id }) else { return }
         if let saved = session.inputSource {
