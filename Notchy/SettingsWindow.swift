@@ -5,12 +5,14 @@ enum SettingsTab: String, CaseIterable {
     case about = "About"
     case general = "General"
     case terminal = "Terminal"
+    case quickInput = "Quick Input"
     case integrations = "Integrations"
 
     var icon: String {
         switch self {
         case .general: return "gearshape"
         case .terminal: return "terminal"
+        case .quickInput: return "keyboard"
         case .integrations: return "puzzlepiece"
         case .about: return "info.circle"
         }
@@ -40,6 +42,10 @@ struct SettingsContentView: View {
                 .tabItem { Label(SettingsTab.terminal.rawValue, systemImage: SettingsTab.terminal.icon) }
                 .tag(SettingsTab.terminal)
 
+            QuickInputTab()
+                .tabItem { Label(SettingsTab.quickInput.rawValue, systemImage: SettingsTab.quickInput.icon) }
+                .tag(SettingsTab.quickInput)
+
             IntegrationsTab()
                 .tabItem { Label(SettingsTab.integrations.rawValue, systemImage: SettingsTab.integrations.icon) }
                 .tag(SettingsTab.integrations)
@@ -48,7 +54,7 @@ struct SettingsContentView: View {
                 .tabItem { Label(SettingsTab.about.rawValue, systemImage: SettingsTab.about.icon) }
                 .tag(SettingsTab.about)
         }
-        .frame(width: 520, height: 440)
+        .frame(width: 640, height: 440)
     }
 }
 
@@ -143,6 +149,167 @@ struct TerminalTab: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+}
+
+struct QuickInputTab: View {
+    @Bindable private var settings = SettingsManager.shared
+
+    /// True when a row is still missing its shortcut or command. Used to block
+    /// adding another blank row until the current one is finished, so the list
+    /// can't fill up with half-configured entries.
+    private var hasIncompleteRow: Bool {
+        settings.quickInputPairs.contains { !$0.isActive }
+    }
+
+    private func addPair() {
+        guard !hasIncompleteRow else { return }
+        settings.quickInputPairs.append(.blank)
+    }
+
+    private func deletePair(_ pair: QuickInputPair) {
+        settings.quickInputPairs.removeAll { $0.id == pair.id }
+    }
+
+    /// A binding that looks the row up by `id` on every access, so deleting a
+    /// row can't leave a child view indexing a stale position (the cause of the
+    /// "Index out of range" crash when using `ForEach($array)` with removal).
+    private func binding(for pair: QuickInputPair) -> Binding<QuickInputPair> {
+        Binding(
+            get: { settings.quickInputPairs.first { $0.id == pair.id } ?? pair },
+            set: { newValue in
+                if let index = settings.quickInputPairs.firstIndex(where: { $0.id == pair.id }) {
+                    settings.quickInputPairs[index] = newValue
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(isOn: $settings.quickInputEnabled) {
+                    Text("Enable quick input")
+                    Text("Press a shortcut to type a saved command into the focused terminal")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                if settings.quickInputPairs.isEmpty {
+                    Text("No shortcuts yet — add one below.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    QuickInputHeader()
+                }
+                ForEach(settings.quickInputPairs) { pair in
+                    QuickInputRow(pair: binding(for: pair), validate: validateShortcut(pairID: pair.id))
+                        { deletePair(pair) }
+                }
+                Button(action: addPair) {
+                    Label("Add Shortcut", systemImage: "plus")
+                }
+                .buttonStyle(.borderless)
+                .disabled(hasIncompleteRow)
+                .help(hasIncompleteRow ? "Finish the current shortcut before adding another" : "")
+            } header: {
+                Text("Shortcuts")
+            } footer: {
+                Text("Shortcuts fire only while a terminal tab is focused. The ↵ toggle controls whether Return is pressed after the command.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .disabled(!settings.quickInputEnabled)
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+    }
+
+    /// Build the validator for one row: rejects combos reserved by Notchy or
+    /// already bound by another quick-input row.
+    private func validateShortcut(pairID: UUID) -> (UInt16, UInt) -> String? {
+        return { keyCode, modifiers in
+            if let name = ReservedShortcut.conflict(keyCode: keyCode, modifiers: modifiers) {
+                return "\(KeyboardShortcutFormatter.string(keyCode: keyCode, modifiers: modifiers) ?? "This shortcut") is already used for “\(name)”."
+            }
+            if settings.quickInputPairs.contains(where: {
+                $0.id != pairID && $0.keyCode == keyCode && $0.modifiers == modifiers
+            }) {
+                return "\(KeyboardShortcutFormatter.string(keyCode: keyCode, modifiers: modifiers) ?? "This shortcut") is already assigned to another command."
+            }
+            return nil
+        }
+    }
+}
+
+/// Column widths shared by the quick-input header and rows so they line up.
+private enum QuickInputLayout {
+    static let shortcut: CGFloat = 120
+    static let toggle: CGFloat = 28
+    static let trash: CGFloat = 28
+    static let spacing: CGFloat = 8
+}
+
+struct QuickInputHeader: View {
+    var body: some View {
+        HStack(spacing: QuickInputLayout.spacing) {
+            Text("Shortcut").frame(width: QuickInputLayout.shortcut, alignment: .leading)
+            Text("Command").frame(maxWidth: .infinity, alignment: .leading)
+            Text("↵").frame(width: QuickInputLayout.toggle)
+                .help("Press Return after sending the command")
+            Color.clear.frame(width: QuickInputLayout.trash)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+}
+
+/// One editable quick-input binding: shortcut recorder + command field +
+/// auto-run toggle + delete.
+struct QuickInputRow: View {
+    @Binding var pair: QuickInputPair
+    var validate: (UInt16, UInt) -> String?
+    var onDelete: () -> Void
+
+    @Bindable private var settings = SettingsManager.shared
+
+    /// Match the terminal's font so what the user types here looks exactly like
+    /// what gets sent — including how trailing spaces are spaced out.
+    private var commandFont: Font {
+        if let name = settings.terminalFontName, !name.isEmpty {
+            return .custom(name, size: 13)
+        }
+        return .system(.body, design: .monospaced)
+    }
+
+    var body: some View {
+        HStack(spacing: QuickInputLayout.spacing) {
+            KeyRecorder(keyCode: $pair.keyCode, modifiers: $pair.modifiers, validate: validate)
+                .frame(width: QuickInputLayout.shortcut, height: 22)
+
+            TextField("", text: $pair.command)
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.leading)
+                .font(commandFont)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+
+            Toggle("", isOn: $pair.autoRun)
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .frame(width: QuickInputLayout.toggle)
+                .help("Press Return after sending the command")
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .frame(width: QuickInputLayout.trash)
+            .help("Remove this shortcut")
+        }
     }
 }
 
@@ -405,10 +572,16 @@ struct AboutTab: View {
     }
 }
 
-class SettingsWindowController {
+class SettingsWindowController: NSObject, NSWindowDelegate {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
     private var selection: SettingsSelection?
+
+    /// Drop any quick-input rows the user started but never finished (missing a
+    /// shortcut or command) so half-configured entries don't persist.
+    func windowWillClose(_ notification: Notification) {
+        SettingsManager.shared.quickInputPairs.removeAll { !$0.isActive }
+    }
 
     func show(tab: SettingsTab = .general, onShowNotchChanged: @escaping (Bool) -> Void, onExternalDisplayChanged: @escaping (Bool) -> Void) {
         if let existing = window {
@@ -425,12 +598,13 @@ class SettingsWindowController {
         let hostingView = NSHostingView(rootView: content)
 
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 440),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 440),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
         win.title = "Notchy Settings"
+        win.delegate = self
         win.contentView = hostingView
         win.center()
         win.isReleasedWhenClosed = false

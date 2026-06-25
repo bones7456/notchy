@@ -404,6 +404,19 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, self.window?.firstResponder === self else { return event }
 
+            // User-defined quick-input shortcuts (Settings → Quick Input). Checked
+            // first so a user can bind any combo; unconfigured rows (modifiers == 0)
+            // and empty commands are skipped via `isActive`.
+            if SettingsManager.shared.quickInputEnabled {
+                let mods = event.modifierFlags.intersection(QuickInputPair.relevantModifiers).rawValue
+                if let pair = SettingsManager.shared.quickInputPairs.first(where: {
+                    $0.isActive && $0.keyCode == event.keyCode && $0.modifiers == mods
+                }) {
+                    self.send(txt: pair.command + (pair.autoRun ? "\r" : ""))
+                    return nil // consume the event
+                }
+            }
+
             // Shift+Enter: send kitty keyboard protocol sequence for newline
             if event.keyCode == 36,
                event.modifierFlags.intersection([.shift, .option, .control, .command]) == .shift {

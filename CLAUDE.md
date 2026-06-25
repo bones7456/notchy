@@ -56,6 +56,10 @@ Notchy is a macOS menu bar app that provides a floating terminal panel anchored 
 
 **Hover behavior**: `AppDelegate` manages a dual interaction model — notch hover opens the panel with mouse-tracking that auto-hides when the cursor leaves, while status item click opens normally with resign-key hiding. The backtick key (keyCode 50) is a global hotkey to toggle the panel.
 
+**Quick input**: Users can bind custom shortcuts to canned commands (Settings → Quick Input). `QuickInputPair` (keyCode + modifiers + command + autoRun) is matched in `ClickThroughTerminalView`'s key monitor and persisted as JSON via `SettingsManager.quickInputPairs`. The recorder validates new combos against `enum ReservedShortcut` (in `QuickInput.swift`) so a binding can't shadow an existing action.
+
+> When adding any new keyboard shortcut anywhere in the app (panel/tab commands, terminal editing keys, global hotkeys), register it in `enum ReservedShortcut` so the quick-input recorder rejects user bindings that would collide with it.
+
 ## Dependencies
 
 - **SwiftTerm** (`migueldeicaza/SwiftTerm`) — terminal emulator view (`LocalProcessTerminalView`)

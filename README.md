@@ -20,6 +20,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **Force-click to look up** — deep-press a word in the terminal to pop up its system dictionary definition, just like Safari's Look Up; toggle via Settings → General → Terminal → Look up on force click
 - **Right-click menu** — right-click in the terminal for Copy / Paste / Select All, look up or web-search the selection (or the word under the cursor), open a URL under the cursor, and clear the screen
 - **Per-tab input source** — each tab remembers its own keyboard input method, so a CLAUDE.md tab can stay on a CJK input source while a shadow tab defaults to English; switches automatically as you change tabs and leaves other apps' input source untouched. Toggle via Settings → General → Terminal → Per-tab input source
+- **Quick input** — bind your own keyboard shortcuts to canned commands (ships with ⌘G → `git status`); press one while a terminal tab is focused to type the command, optionally pressing Return for you. Add, edit, or remove bindings — or switch the whole feature off — in Settings → Quick Input
 - **Adjustable scrollback** — set the terminal history buffer in Settings → General → Terminal (default 1,000 lines, up to 50,000)
 - **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
 - **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes
@@ -84,6 +85,7 @@ The tab context menu (right-click a tab) also gains **Create Checkpoint** — a 
 | <kbd>Cmd</kbd>+<kbd>S</kbd> | Create a git checkpoint of the active project |
 | <kbd>Cmd</kbd>+<kbd>=</kbd> (or <kbd>Cmd</kbd>+<kbd>+</kbd>) / <kbd>Cmd</kbd>+<kbd>−</kbd> | Zoom the terminal font in / out |
 | <kbd>Cmd</kbd>+<kbd>0</kbd> | Reset the terminal font size |
+| <kbd>Cmd</kbd>+<kbd>G</kbd> | Type `git status` (default quick-input binding; customizable in Settings → Quick Input) |
 
 ## Requirements
 

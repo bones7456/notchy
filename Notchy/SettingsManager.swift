@@ -88,6 +88,22 @@ class SettingsManager {
         didSet { UserDefaults.standard.set(perTabInputSourceEnabled, forKey: "perTabInputSourceEnabled") }
     }
 
+    /// Master switch for the quick-input feature.
+    var quickInputEnabled: Bool {
+        didSet { UserDefaults.standard.set(quickInputEnabled, forKey: "quickInputEnabled") }
+    }
+
+    /// User-defined shortcut → command bindings, persisted as JSON.
+    var quickInputPairs: [QuickInputPair] {
+        didSet { persistQuickInputPairs() }
+    }
+
+    private func persistQuickInputPairs() {
+        if let data = try? JSONEncoder().encode(quickInputPairs) {
+            UserDefaults.standard.set(data, forKey: "quickInputPairs")
+        }
+    }
+
     static let minBufferSize = 500
     static let maxBufferSize = 50000
     static let defaultBufferSize = 1000
@@ -121,6 +137,7 @@ class SettingsManager {
         if defaults.object(forKey: "terminalFontWeight") == nil { defaults.set(TerminalFontWeight.regular.rawValue, forKey: "terminalFontWeight") }
         if defaults.object(forKey: "terminalLigaturesEnabled") == nil { defaults.set(true, forKey: "terminalLigaturesEnabled") }
         if defaults.object(forKey: "perTabInputSourceEnabled") == nil { defaults.set(true, forKey: "perTabInputSourceEnabled") }
+        if defaults.object(forKey: "quickInputEnabled") == nil { defaults.set(true, forKey: "quickInputEnabled") }
 
         showNotch = defaults.bool(forKey: "replaceNotch")
         soundsEnabled = defaults.bool(forKey: "soundsEnabled")
@@ -138,6 +155,14 @@ class SettingsManager {
         terminalFontWeight = TerminalFontWeight(rawValue: defaults.string(forKey: "terminalFontWeight") ?? "") ?? .regular
         terminalLigaturesEnabled = defaults.bool(forKey: "terminalLigaturesEnabled")
         perTabInputSourceEnabled = defaults.bool(forKey: "perTabInputSourceEnabled")
+        quickInputEnabled = defaults.bool(forKey: "quickInputEnabled")
+        if let data = defaults.data(forKey: "quickInputPairs"),
+           let decoded = try? JSONDecoder().decode([QuickInputPair].self, from: data) {
+            quickInputPairs = decoded
+        } else {
+            // Seed the default ⌘G → git status binding on first launch.
+            quickInputPairs = [QuickInputPair.defaultGitStatus]
+        }
         let storedBufferSize = defaults.integer(forKey: "terminalBufferSize")
         terminalBufferSize = storedBufferSize > 0
             ? max(Self.minBufferSize, min(Self.maxBufferSize, storedBufferSize))
