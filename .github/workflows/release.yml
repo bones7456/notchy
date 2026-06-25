@@ -36,6 +36,13 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      # Xcode 16+ ships the Metal compiler as an on-demand component that isn't
+      # always preinstalled on the runner image (Xcode 26.6 broke the build with
+      # an undiagnosed "CompileMetalFile" failure on SwiftTerm's Shaders.metal).
+      # Fetch it explicitly so the archive can compile Metal shaders.
+      - name: Install Metal toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
       - name: Import Developer ID certificate
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
