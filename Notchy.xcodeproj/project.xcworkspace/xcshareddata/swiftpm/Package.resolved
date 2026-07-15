@@ -24,7 +24,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/bones7456/SwiftTerm.git",
       "state" : {
-        "revision" : "64b5ef4fb847b44be0b14c405e0bc615c39fba97"
+        "revision" : "dadc8d3b3e172153aee4db1998bad817ecf0ace4"
       }
     }
   ],

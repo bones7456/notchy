@@ -332,6 +332,75 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         send(txt: "\u{0c}")
     }
 
+    // MARK: - Cmd+click link opening
+
+    /// SwiftTerm hands us raw link text: URLs, absolute paths, but also the
+    /// `path/to/File.swift:12` (or `:12:5`) references agents print
+    /// constantly — and those are relative to the shell's cwd, which only
+    /// this app can resolve (via proc_pidinfo on the shell process).
+    override func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
+        if let url = URL(string: link), url.scheme != nil {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        // A path that exists exactly as printed (colons and all) wins over
+        // the line-number interpretation.
+        if let path = resolveExistingPath(link) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            return
+        }
+        guard let (rawPath, line) = splitTrailingLineNumber(from: link),
+              let path = resolveExistingPath(rawPath)
+        else { return }
+        if !openInXcode(path: path, line: line) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        }
+    }
+
+    /// Expands `~`, resolves relative paths against the shell's current
+    /// working directory, and returns the standardized path if it exists.
+    private func resolveExistingPath(_ raw: String) -> String? {
+        var path = NSString(string: raw).expandingTildeInPath
+        if !path.hasPrefix("/") {
+            guard let sessionId,
+                  let cwd = TerminalManager.shared.currentWorkingDirectory(for: sessionId)
+            else { return nil }
+            path = NSString(string: cwd).appendingPathComponent(path)
+        }
+        path = NSString(string: path).standardizingPath
+        return FileManager.default.fileExists(atPath: path) ? path : nil
+    }
+
+    /// Splits a trailing `:12` or `:12:5` (line / line:column) suffix off a
+    /// compiler- or agent-style file reference.
+    private func splitTrailingLineNumber(from link: String) -> (path: String, line: Int)? {
+        guard let suffix = link.range(of: #":(\d+)(?::\d+)?$"#, options: .regularExpression) else {
+            return nil
+        }
+        let path = String(link[..<suffix.lowerBound])
+        guard !path.isEmpty,
+              let line = Int(link[suffix.lowerBound...].dropFirst().split(separator: ":")[0])
+        else { return nil }
+        return (path, line)
+    }
+
+    /// `xed --line` is the only way to land on the referenced line; a plain
+    /// NSWorkspace open can't. Returns false when Xcode's CLI isn't usable
+    /// so the caller can fall back to the default application.
+    private func openInXcode(path: String, line: Int) -> Bool {
+        let xed = "/usr/bin/xed"
+        guard FileManager.default.isExecutableFile(atPath: xed) else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: xed)
+        process.arguments = ["--line", "\(line)", path]
+        do {
+            try process.run()
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Replicates SwiftTerm's internal cell-dimension math (which isn't part
     /// of its public API) so column/row hit-testing lines up with what's drawn.
     private func cellDimensions() -> CGSize {
