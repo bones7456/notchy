@@ -276,8 +276,18 @@ class SessionStore {
 
 
         for project in projects {
-            guard !sessions.contains(where: { $0.projectName == project.name }),
-                  dismissedProjects[project.name] == nil else { continue }
+            if let index = sessions.firstIndex(where: { $0.projectName == project.name }) {
+                // Project moved on disk: refresh the stored paths so the tab
+                // stops cd-ing into the old directory. Title-fallback detection
+                // carries an empty path and must not clobber a real one.
+                if sessions[index].kind == .xcode, !project.path.isEmpty,
+                   sessions[index].projectPath != project.path {
+                    sessions[index].projectPath = project.path
+                    sessions[index].workingDirectory = project.directoryPath
+                }
+                continue
+            }
+            guard dismissedProjects[project.name] == nil else { continue }
             let session = TerminalSession(
                 projectName: project.name,
                 projectPath: project.path,
