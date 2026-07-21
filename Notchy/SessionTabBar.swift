@@ -1,11 +1,38 @@
 import SwiftUI
 
+/// Reports each tab's on-screen frame (in the shared "tabBar" coordinate
+/// space) so the drag-to-reorder gesture can tell which tab the cursor is
+/// over without assuming a fixed tab width — tab width varies with the
+/// session name.
+private struct TabFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
 struct SessionTabBar: View {
     @Bindable var sessionStore: SessionStore
+
+    /// Finger travel required before a press-and-hold becomes a reorder
+    /// drag rather than a tab-select tap.
+    private static let dragThreshold: CGFloat = 4
+
+    @State private var tabFrames: [UUID: CGRect] = [:]
+    @State private var draggedSessionId: UUID?
+    @State private var dragOffsetX: CGFloat = 0
+    /// Where the dragged tab would land if dropped now, as a gap index into
+    /// the current (pre-drop) session order — drawn as a thin insertion
+    /// line between the two neighboring tabs. Nil while not dragging.
+    @State private var insertionIndex: Int?
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Array(sessionStore.sessions.enumerated()), id: \.element.id) { index, session in
+                if insertionIndex == index {
+                    insertionIndicator
+                }
+
                 SessionTab(
                     session: session,
                     tabNumber: index + 1,
@@ -13,15 +40,92 @@ struct SessionTabBar: View {
                     terminalActive: session.hasStarted && sessionStore.activeXcodeProjects.contains(session.projectName),
                     terminalStatus: session.terminalStatus,
                     foregroundOpacity: sessionStore.isWindowFocused ? 1.0 : 0.78,
-                    onSelect: { sessionStore.selectSession(session.id) },
                     onClose: { sessionStore.requestCloseSession(session.id) },
                     onRename: { newName in
                         sessionStore.renameSession(session.id, to: newName)
                     }
                 )
+                .zIndex(draggedSessionId == session.id ? 1 : 0)
+                .shadow(color: .black.opacity(draggedSessionId == session.id ? 0.35 : 0), radius: 6, y: 2)
+                .offset(x: draggedSessionId == session.id ? dragOffsetX : 0)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: TabFramePreferenceKey.self,
+                            value: [session.id: geo.frame(in: .named("tabBar"))]
+                        )
+                    }
+                )
+                .gesture(dragGesture(for: session))
+            }
+            if insertionIndex == sessionStore.sessions.count {
+                insertionIndicator
             }
         }
+        .coordinateSpace(name: "tabBar")
+        .onPreferenceChange(TabFramePreferenceKey.self) { tabFrames = $0 }
+        .animation(.easeOut(duration: 0.15), value: insertionIndex)
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var insertionIndicator: some View {
+        Capsule()
+            .fill(Color.accentColor)
+            .frame(width: 2, height: 18)
+    }
+
+    /// A single `DragGesture(minimumDistance: 0)` stands in for both tap and
+    /// drag: on macOS, `.onTapGesture` and a `DragGesture` attached to the
+    /// same view race unreliably, so tap-to-select falls out naturally as
+    /// "released before crossing the drag threshold".
+    private func dragGesture(for session: TerminalSession) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("tabBar"))
+            .onChanged { value in
+                // The dragged tab (or a sibling the drop target depends on)
+                // may vanish mid-drag if its Xcode project closes underneath
+                // us (5s polling). Bail out rather than reorder against stale state.
+                guard sessionStore.sessions.contains(where: { $0.id == session.id }) else { return }
+
+                if draggedSessionId == nil {
+                    guard abs(value.translation.width) > Self.dragThreshold else { return }
+                    draggedSessionId = session.id
+                }
+                guard draggedSessionId == session.id else { return }
+
+                dragOffsetX = value.translation.width
+                insertionIndex = targetInsertionIndex(for: session)
+            }
+            .onEnded { _ in
+                guard draggedSessionId == session.id else {
+                    // Never crossed the drag threshold — treat as a plain tap.
+                    sessionStore.selectSession(session.id)
+                    return
+                }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    if let target = insertionIndex {
+                        sessionStore.moveSession(session.id, to: target)
+                    }
+                    draggedSessionId = nil
+                    dragOffsetX = 0
+                    insertionIndex = nil
+                }
+            }
+    }
+
+    /// Which gap the dragged tab currently belongs in, found by comparing
+    /// its live center against every other tab's measured midpoint.
+    private func targetInsertionIndex(for session: TerminalSession) -> Int? {
+        guard let originalFrame = tabFrames[session.id] else { return nil }
+        let draggedCenterX = originalFrame.midX + dragOffsetX
+        let orderedIds = sessionStore.sessions.map(\.id)
+
+        for (index, id) in orderedIds.enumerated() where id != session.id {
+            guard let frame = tabFrames[id] else { continue }
+            if draggedCenterX < frame.midX {
+                return index
+            }
+        }
+        return orderedIds.count
     }
 }
 
@@ -32,7 +136,6 @@ struct SessionTab: View {
     let terminalActive: Bool
     var terminalStatus: TerminalStatus = .idle
     var foregroundOpacity: Double = 1.0
-    let onSelect: () -> Void
     let onClose: () -> Void
     let onRename: (String) -> Void
 
@@ -125,7 +228,6 @@ struct SessionTab: View {
                 NSCursor.pop()
             }
         }
-        .onTapGesture(perform: onSelect)
         .overlay(MiddleClickView { onClose() })
         .contextMenu {
             // Project actions derived from this tab's directory. Checkpoint is

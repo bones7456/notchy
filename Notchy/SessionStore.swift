@@ -419,6 +419,22 @@ class SessionStore {
         persistSessions()
     }
 
+    /// Reorders a tab to a new position (drag-to-reorder in the tab bar).
+    /// `newIndex` follows the same "gap index" convention as SwiftUI's
+    /// `ForEach.onMove` — the slot the item should land at as counted in the
+    /// array before it's removed (0...sessions.count), not the post-removal
+    /// index `Array.insert(at:)` expects.
+    /// Tab numbers (Cmd+1..9) are positional, so they shift along with it.
+    func moveSession(_ id: UUID, to newIndex: Int) {
+        guard let oldIndex = sessions.firstIndex(where: { $0.id == id }),
+              (0...sessions.count).contains(newIndex) else { return }
+        let adjustedIndex = newIndex > oldIndex ? newIndex - 1 : newIndex
+        guard adjustedIndex != oldIndex else { return }
+        let session = sessions.remove(at: oldIndex)
+        sessions.insert(session, at: adjustedIndex)
+        persistSessions()
+    }
+
     func renameSession(_ id: UUID, to newName: String) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
