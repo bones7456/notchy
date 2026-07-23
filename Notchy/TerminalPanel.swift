@@ -416,6 +416,12 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
             }
             return true
         }
+        // Cmd+K: toggle the session quick switcher
+        if event.modifierFlags.intersection([.command, .shift, .control, .option]) == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "k" {
+            sessionStore.isShowingQuickSwitcher.toggle()
+            return true
+        }
         // Ctrl+Tab / Ctrl+Shift+Tab: cycle sessions
         if event.keyCode == 48 && event.modifierFlags.contains(.control) {
             if event.modifierFlags.contains(.shift) {

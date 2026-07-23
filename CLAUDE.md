@@ -52,6 +52,8 @@ Notchy is a macOS menu bar app that provides a floating terminal panel anchored 
 
 **Tab bar**: `SessionTabBar` renders tabs with a green/gray dot indicating whether the Xcode project is still open. Tabs support rename (via context menu) and close.
 
+**Quick switcher**: Cmd+K toggles `SessionStore.isShowingQuickSwitcher`, which shows `QuickSwitcherOverlay` (a SwiftUI overlay in `PanelContentView`) — a fuzzy-searchable, most-recently-used-ordered list of sessions (`SessionStore.sessionsByRecency`, derived from the private `activationHistory` stack). Selecting a session or dismissing with Esc calls `TerminalManager.shared.terminal(for:)` + `makeFirstResponder` to explicitly hand keyboard focus back to the active session's terminal — removing a SwiftUI overlay from the view hierarchy does not restore AppKit's first-responder state on its own, and `TerminalSessionView.attachTerminal`'s own re-focus logic only fires when the session id/generation actually changes, not on a same-session dismiss.
+
 **Checkpoints**: `CheckpointManager` creates git snapshots using custom refs (`refs/Notchy-snapshots/<project>/<timestamp>`). It uses a temporary `GIT_INDEX_FILE` to avoid disturbing the user's staging area. Checkpoints can be created (Cmd+S or menu), listed, and restored.
 
 **Hover behavior**: `AppDelegate` manages a dual interaction model — notch hover opens the panel with mouse-tracking that auto-hides when the cursor leaves, while status item click opens normally with resign-key hiding. The backtick key (keyCode 50) is a global hotkey to toggle the panel.

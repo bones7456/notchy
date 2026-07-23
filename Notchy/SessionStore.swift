@@ -51,6 +51,7 @@ class SessionStore {
     var isTerminalExpanded = true
     var isWindowFocused = true
     var isShowingDialog = false
+    var isShowingQuickSwitcher = false
     var hasCompletedInitialDetection = false
 
     /// Transient text shown next to the pin icon — the panel dimensions while
@@ -88,6 +89,23 @@ class SessionStore {
 
     var activeSession: TerminalSession? {
         sessions.first { $0.id == activeSessionId }
+    }
+
+    /// Sessions ordered most-recently-active first, for the quick switcher (⌘K).
+    /// Sessions never activated this launch (e.g. restored but untouched) fall
+    /// back to tab order at the end.
+    var sessionsByRecency: [TerminalSession] {
+        var seen = Set<UUID>()
+        var result: [TerminalSession] = []
+        for id in activationHistory.reversed() {
+            guard !seen.contains(id), let session = sessions.first(where: { $0.id == id }) else { continue }
+            seen.insert(id)
+            result.append(session)
+        }
+        for session in sessions where !seen.contains(session.id) {
+            result.append(session)
+        }
+        return result
     }
 
     /// Currently open Xcode project names (refreshed on each scan)

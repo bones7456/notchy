@@ -57,6 +57,7 @@ enum ReservedShortcut {
         (13, .command, "Close tab"),                     // ⌘W
         (35, .command, "Pin tab"),                       // ⌘P
         (35, [.command, .shift], "Pin panel"),           // ⌘⇧P
+        (40, .command, "Quick switcher"),                // ⌘K
         (1, .command, "Create checkpoint"),              // ⌘S
         (8, .command, "Copy"),                           // ⌘C
         (9, .command, "Paste"),                          // ⌘V

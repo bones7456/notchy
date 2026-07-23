@@ -13,6 +13,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **AI agent auto-launch** — starts `claude` for projects with `CLAUDE.md`, or `codex` for projects with `AGENTS.md`
 - **Multi-session tabs** — run multiple Claude Code or Codex sessions side by side
 - **Drag to reorder tabs** — press and drag a tab left or right to change its position; drop it and the rest snap into place. Reordering also renumbers the Cmd+1…9 shortcuts
+- **Quick switcher** — Cmd+K opens a fuzzy-searchable list of sessions sorted by most-recently-used; type to filter, ↑↓ to move the selection, Enter to jump, Esc to cancel and return focus to the terminal you were in
 - **Pin tabs to persist** — right-click a `+` tab → **Pin Tab** to keep it across app restarts; Notchy remembers the tab's working directory and re-runs agent auto-launch on relaunch
 - **Shadow tabs** — right-click an Xcode or pinned tab → **Shadow Tab** to spawn a plain shell sibling cd'd into the same directory, for ad-hoc git/build commands without disturbing the agent
 - **Zoom terminal font** — Cmd+= (or Cmd++) and Cmd+− adjust the font size across all open terminals, Cmd+0 resets to default; the size is persisted across launches
@@ -82,6 +83,7 @@ The tab context menu (right-click a tab) also gains **Create Checkpoint** — a 
 | <kbd>Cmd</kbd>+<kbd>W</kbd> | Close the current tab |
 | <kbd>Cmd</kbd>+<kbd>1</kbd>…<kbd>9</kbd> | Jump to tab N |
 | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> | Cycle to the next / previous tab |
+| <kbd>Cmd</kbd>+<kbd>K</kbd> | Open the session quick switcher (fuzzy search, most-recently-used order) |
 | <kbd>Cmd</kbd>+<kbd>P</kbd> | Pin / unpin the current tab |
 | <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Pin / unpin the whole panel (keeps it open when it loses focus) |
 | <kbd>Cmd</kbd>+<kbd>S</kbd> | Create a git checkpoint of the active project |

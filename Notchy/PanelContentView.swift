@@ -178,6 +178,14 @@ struct PanelContentView: View {
 
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(alignment: .top) {
+            if sessionStore.isShowingQuickSwitcher {
+                QuickSwitcherOverlay(sessionStore: sessionStore)
+                    .padding(.top, 44)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: sessionStore.isShowingQuickSwitcher)
         .onAppear {
             sessionStore.refreshLastCheckpoint()
         }
