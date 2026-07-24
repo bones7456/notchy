@@ -1199,6 +1199,8 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
+        env["TERM_PROGRAM"] = "Notchy.app"
+        env["TERM_PROGRAM_VERSION"] = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
         return env.map { "\($0.key)=\($0.value)" }
     }
 
