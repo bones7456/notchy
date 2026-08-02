@@ -9,9 +9,24 @@ extension Notification.Name {
 
 }
 
+/// The slice of `TerminalManager` that `SessionStore` drives. Injected so the
+/// store can be unit-tested without spawning real terminals or reading live
+/// shell working directories.
+protocol SessionTerminalControlling {
+    func currentWorkingDirectory(for id: UUID) -> String?
+    func destroyTerminal(for id: UUID)
+}
+
+extension TerminalManager: SessionTerminalControlling {}
+
 @Observable
 class SessionStore {
     static let shared = SessionStore()
+
+    /// Persistence backing store — `.standard` in the app, an isolated suite in tests.
+    @ObservationIgnored private let defaults: UserDefaults
+    /// Terminal lifecycle/CWD access — the real `TerminalManager` in the app, a fake in tests.
+    @ObservationIgnored private let terminal: SessionTerminalControlling
 
     var sessions: [TerminalSession] = []
     var activeSessionId: UUID? {
@@ -22,7 +37,7 @@ class SessionStore {
             // Per-tab input source: hand the outgoing tab's live input method off
             // to the incoming tab. Only while the panel holds focus, so we never
             // change the system input source out from under another app.
-            if SettingsManager.shared.perTabInputSourceEnabled && isPanelKey {
+            if isPanelKey && SettingsManager.shared.perTabInputSourceEnabled {
                 captureInputSource(into: oldValue)
                 applyInputSource(for: newValue)
             }
@@ -39,12 +54,9 @@ class SessionStore {
     /// Input source in effect outside Notchy, captured when the panel gains
     /// focus and restored when it loses focus, so other apps keep their IME.
     private var externalInputSource: String?
-    var isPinned: Bool = {
-        if UserDefaults.standard.object(forKey: "isPinned") == nil { return true }
-        return UserDefaults.standard.bool(forKey: "isPinned")
-    }() {
+    var isPinned: Bool {
         didSet {
-            UserDefaults.standard.set(isPinned, forKey: "isPinned")
+            defaults.set(isPinned, forKey: "isPinned")
             updatePollingTimer()
         }
     }
@@ -124,19 +136,31 @@ class SessionStore {
     private static let sessionsKey = "persistedSessions"
     private static let activeSessionKey = "activeSessionId"
 
-    init() {
+    init(defaults: UserDefaults = .standard,
+         terminal: SessionTerminalControlling = TerminalManager.shared,
+         autostart: Bool = true) {
+        self.defaults = defaults
+        self.terminal = terminal
+        // Set the stored property directly (didSet doesn't fire during init) so
+        // reading the persisted flag doesn't kick off the polling timer early.
+        self.isPinned = defaults.object(forKey: "isPinned") == nil
+            ? true
+            : defaults.bool(forKey: "isPinned")
+        // Tests construct with autostart:false to skip restoring live state and
+        // starting the 5s Xcode-detection poll.
+        guard autostart else { return }
         restoreSessions()
         updatePollingTimer()
     }
 
     // MARK: - Session Persistence
 
-    private func restoreSessions() {
-        guard let data = UserDefaults.standard.data(forKey: Self.sessionsKey),
+    func restoreSessions() {
+        guard let data = defaults.data(forKey: Self.sessionsKey),
               let persisted = try? JSONDecoder().decode([PersistedSession].self, from: data),
               !persisted.isEmpty else { return }
         sessions = persisted.map { TerminalSession(persisted: $0) }
-        if let savedId = UserDefaults.standard.string(forKey: Self.activeSessionKey),
+        if let savedId = defaults.string(forKey: Self.activeSessionKey),
            let uuid = UUID(uuidString: savedId),
            sessions.contains(where: { $0.id == uuid }) {
             activeSessionId = uuid
@@ -150,18 +174,18 @@ class SessionStore {
         }
     }
 
-    private func persistSessions() {
+    func persistSessions() {
         // Normal "+" tabs are ephemeral by design — only xcode and pinned tabs survive a restart.
         let persisted = sessions
             .filter { $0.kind != .normal }
             .map { PersistedSession(id: $0.id, projectName: $0.projectName, customName: $0.customName, projectPath: $0.projectPath, workingDirectory: $0.workingDirectory, kind: $0.kind, inputSource: $0.inputSource) }
         if let data = try? JSONEncoder().encode(persisted) {
-            UserDefaults.standard.set(data, forKey: Self.sessionsKey)
+            defaults.set(data, forKey: Self.sessionsKey)
         }
         if let activeId = activeSessionId {
-            UserDefaults.standard.set(activeId.uuidString, forKey: Self.activeSessionKey)
+            defaults.set(activeId.uuidString, forKey: Self.activeSessionKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: Self.activeSessionKey)
+            defaults.removeObject(forKey: Self.activeSessionKey)
         }
     }
 
@@ -405,7 +429,7 @@ class SessionStore {
         // Prefer the parent shell's live CWD so a `cd` inside the agent tab
         // is mirrored; fall back to the stored workingDirectory if the
         // parent terminal hasn't been started yet.
-        let cwd = TerminalManager.shared.currentWorkingDirectory(for: parentId) ?? parent.workingDirectory
+        let cwd = terminal.currentWorkingDirectory(for: parentId) ?? parent.workingDirectory
         let session = TerminalSession(
             projectName: parent.displayName + "$",
             workingDirectory: cwd,
@@ -425,7 +449,7 @@ class SessionStore {
         if pinned, current == .normal {
             // Snapshot the shell's actual CWD so we cd back to it on restart,
             // even if the user never set up shell integration (OSC 7).
-            if let cwd = TerminalManager.shared.currentWorkingDirectory(for: id) {
+            if let cwd = terminal.currentWorkingDirectory(for: id) {
                 sessions[index].workingDirectory = cwd
             }
             sessions[index].kind = .pinned
@@ -623,7 +647,7 @@ class SessionStore {
 
     func restartSession(_ id: UUID) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
-        TerminalManager.shared.destroyTerminal(for: id)
+        terminal.destroyTerminal(for: id)
         sessions[index].terminalStatus = .idle
         sessions[index].generation += 1
     }
@@ -659,7 +683,7 @@ class SessionStore {
         if dismissed, let session = sessions.first(where: { $0.id == id }) {
             dismissedProjects[session.projectName] = false
         }
-        TerminalManager.shared.destroyTerminal(for: id)
+        terminal.destroyTerminal(for: id)
         sessions.removeAll { $0.id == id }
         activationHistory.removeAll { $0 == id }
         if activeSessionId == id {
