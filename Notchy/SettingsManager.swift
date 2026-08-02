@@ -21,76 +21,79 @@ enum TerminalFontWeight: String, CaseIterable {
 class SettingsManager {
     static let shared = SettingsManager()
 
+    /// Persistence backing store — `.standard` in the app, an isolated suite in tests.
+    @ObservationIgnored private let defaults: UserDefaults
+
     var showNotch: Bool {
-        didSet { UserDefaults.standard.set(showNotch, forKey: "replaceNotch") }
+        didSet { defaults.set(showNotch, forKey: "replaceNotch") }
     }
 
     var soundsEnabled: Bool {
-        didSet { UserDefaults.standard.set(soundsEnabled, forKey: "soundsEnabled") }
+        didSet { defaults.set(soundsEnabled, forKey: "soundsEnabled") }
     }
 
     var muteSoundsDuringCalls: Bool {
-        didSet { UserDefaults.standard.set(muteSoundsDuringCalls, forKey: "muteSoundsDuringCalls") }
+        didSet { defaults.set(muteSoundsDuringCalls, forKey: "muteSoundsDuringCalls") }
     }
 
     var xcodeIntegrationEnabled: Bool {
-        didSet { UserDefaults.standard.set(xcodeIntegrationEnabled, forKey: "xcodeIntegrationEnabled") }
+        didSet { defaults.set(xcodeIntegrationEnabled, forKey: "xcodeIntegrationEnabled") }
     }
 
     var claudeIntegrationEnabled: Bool {
-        didSet { UserDefaults.standard.set(claudeIntegrationEnabled, forKey: "claudeIntegrationEnabled") }
+        didSet { defaults.set(claudeIntegrationEnabled, forKey: "claudeIntegrationEnabled") }
     }
 
     var codexIntegrationEnabled: Bool {
-        didSet { UserDefaults.standard.set(codexIntegrationEnabled, forKey: "codexIntegrationEnabled") }
+        didSet { defaults.set(codexIntegrationEnabled, forKey: "codexIntegrationEnabled") }
     }
 
     /// Tiebreaker used when both CLAUDE.md and AGENTS.md exist (and both
     /// integrations are enabled). Only `.claude` and `.codex` are meaningful;
     /// `.none` is treated as Claude.
     var preferredAgent: AgentKind {
-        didSet { UserDefaults.standard.set(preferredAgent.rawValue, forKey: "preferredAgent") }
+        didSet { defaults.set(preferredAgent.rawValue, forKey: "preferredAgent") }
     }
 
     var selectionCopyEnabled: Bool {
-        didSet { UserDefaults.standard.set(selectionCopyEnabled, forKey: "selectionCopyEnabled") }
+        didSet { defaults.set(selectionCopyEnabled, forKey: "selectionCopyEnabled") }
     }
 
     /// Force-click (deep press) on a word pops up the system dictionary
     /// definition, mirroring Safari/Quick Look "Look Up".
     var forceTouchLookupEnabled: Bool {
-        didSet { UserDefaults.standard.set(forceTouchLookupEnabled, forKey: "forceTouchLookupEnabled") }
+        didSet { defaults.set(forceTouchLookupEnabled, forKey: "forceTouchLookupEnabled") }
     }
 
     var externalDisplayTrigger: Bool {
-        didSet { UserDefaults.standard.set(externalDisplayTrigger, forKey: "externalDisplayTrigger") }
+        didSet { defaults.set(externalDisplayTrigger, forKey: "externalDisplayTrigger") }
     }
 
     var terminalFontName: String? {
-        didSet { UserDefaults.standard.set(terminalFontName, forKey: "terminalFontName") }
+        didSet { defaults.set(terminalFontName, forKey: "terminalFontName") }
     }
 
     var terminalFontSize: CGFloat {
-        didSet { UserDefaults.standard.set(Double(terminalFontSize), forKey: "terminalFontSize") }
+        didSet { defaults.set(Double(terminalFontSize), forKey: "terminalFontSize") }
     }
 
     var terminalFontWeight: TerminalFontWeight {
-        didSet { UserDefaults.standard.set(terminalFontWeight.rawValue, forKey: "terminalFontWeight") }
+        didSet { defaults.set(terminalFontWeight.rawValue, forKey: "terminalFontWeight") }
     }
 
     var terminalLigaturesEnabled: Bool {
-        didSet { UserDefaults.standard.set(terminalLigaturesEnabled, forKey: "terminalLigaturesEnabled") }
+        didSet { defaults.set(terminalLigaturesEnabled, forKey: "terminalLigaturesEnabled") }
     }
 
     /// Give each tab its own keyboard input source: switching tabs restores the
     /// input method that tab was last left in; new "+" tabs default to English.
     var perTabInputSourceEnabled: Bool {
-        didSet { UserDefaults.standard.set(perTabInputSourceEnabled, forKey: "perTabInputSourceEnabled") }
+        didSet { defaults.set(perTabInputSourceEnabled, forKey: "perTabInputSourceEnabled") }
     }
 
     /// Master switch for the quick-input feature.
     var quickInputEnabled: Bool {
-        didSet { UserDefaults.standard.set(quickInputEnabled, forKey: "quickInputEnabled") }
+        didSet { defaults.set(quickInputEnabled, forKey: "quickInputEnabled") }
     }
 
     /// User-defined shortcut → command bindings, persisted as JSON.
@@ -100,7 +103,7 @@ class SettingsManager {
 
     private func persistQuickInputPairs() {
         if let data = try? JSONEncoder().encode(quickInputPairs) {
-            UserDefaults.standard.set(data, forKey: "quickInputPairs")
+            defaults.set(data, forKey: "quickInputPairs")
         }
     }
 
@@ -117,12 +120,12 @@ class SettingsManager {
                 terminalBufferSize = clamped
                 return
             }
-            UserDefaults.standard.set(terminalBufferSize, forKey: "terminalBufferSize")
+            defaults.set(terminalBufferSize, forKey: "terminalBufferSize")
         }
     }
 
-    init() {
-        let defaults = UserDefaults.standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         if defaults.object(forKey: "replaceNotch") == nil { defaults.set(true, forKey: "replaceNotch") }
         if defaults.object(forKey: "soundsEnabled") == nil { defaults.set(true, forKey: "soundsEnabled") }
         if defaults.object(forKey: "muteSoundsDuringCalls") == nil { defaults.set(false, forKey: "muteSoundsDuringCalls") }
