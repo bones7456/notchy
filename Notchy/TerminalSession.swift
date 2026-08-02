@@ -52,16 +52,45 @@ enum AgentKind: String, Equatable {
     /// files are present and which integrations are enabled. When both markers
     /// exist and both integrations are enabled, falls back to the user's
     /// preferred agent.
+    ///
+    /// This wires the live `SettingsManager` and on-disk marker files into the
+    /// pure `resolve(...)` decision. The two seams it delegates to —
+    /// `markers(in:)` and `resolve(...)` — are separately unit-tested.
     static func detect(in workingDirectory: String) -> AgentKind {
         let settings = SettingsManager.shared
+        let markers = markers(in: workingDirectory)
+        return resolve(
+            hasClaudeMarker: markers.hasClaude,
+            hasCodexMarker: markers.hasCodex,
+            claudeEnabled: settings.claudeIntegrationEnabled,
+            codexEnabled: settings.codexIntegrationEnabled,
+            preferred: settings.preferredAgent
+        )
+    }
+
+    /// Which agent marker files exist at the root of `workingDirectory`.
+    static func markers(in workingDirectory: String) -> (hasClaude: Bool, hasCodex: Bool) {
         let dir = workingDirectory as NSString
         let hasClaude = FileManager.default.fileExists(atPath: dir.appendingPathComponent("CLAUDE.md"))
         let hasCodex = FileManager.default.fileExists(atPath: dir.appendingPathComponent("AGENTS.md"))
-        let claudeAvailable = settings.claudeIntegrationEnabled && hasClaude
-        let codexAvailable = settings.codexIntegrationEnabled && hasCodex
+        return (hasClaude, hasCodex)
+    }
+
+    /// Pure decision: given which markers are present and which integrations are
+    /// enabled, which agent should launch. An integration that's off suppresses
+    /// its marker; `preferred` breaks the tie only when both remain available.
+    static func resolve(
+        hasClaudeMarker: Bool,
+        hasCodexMarker: Bool,
+        claudeEnabled: Bool,
+        codexEnabled: Bool,
+        preferred: AgentKind
+    ) -> AgentKind {
+        let claudeAvailable = claudeEnabled && hasClaudeMarker
+        let codexAvailable = codexEnabled && hasCodexMarker
 
         switch (claudeAvailable, codexAvailable) {
-        case (true, true): return settings.preferredAgent
+        case (true, true): return preferred
         case (true, false): return .claude
         case (false, true): return .codex
         case (false, false): return .none

@@ -10,7 +10,24 @@ Open `Notchy.xcodeproj` in Xcode and build (Cmd+B). Or from the command line:
 xcodebuild -project Notchy.xcodeproj -scheme Notchy -configuration Debug build
 ```
 
-There are no tests or linting configured yet.
+## Tests
+
+Unit tests live in the `NotchyTests` target (Swift Testing, `import Testing`). The
+`Notchy` scheme's Test action hosts them in the app; `AppDelegate.applicationDidFinishLaunching`
+short-circuits when `XCTestConfigurationFilePath` is set so the menu-bar app doesn't
+spin up under test. Run from the command line:
+
+```bash
+xcodebuild test -project Notchy.xcodeproj -scheme Notchy -destination 'platform=macOS'
+```
+
+`.github/workflows/test.yml` runs the same on every push to `main` and every PR
+(with `CODE_SIGNING_ALLOWED=NO`, since CI has no signing certificate).
+
+Tests target pure logic that's cheap to isolate. The first covered area is
+`TerminalStatusClassifier` (extracted from `ClickThroughTerminalView`) — the
+text-parsing that maps terminal output to `TerminalStatus`, the app's most
+regression-prone code. No linting is configured yet.
 
 ## Release
 

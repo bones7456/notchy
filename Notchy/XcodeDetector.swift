@@ -64,7 +64,7 @@ class XcodeDetector {
         if error != nil { return nil }
 
         guard let resultString = result.stringValue else { return nil }
-        return parseProject(from: resultString)
+        return Self.parseProject(from: resultString)
     }
 
     private func queryAllViaAppleScript() -> [XcodeProject]? {
@@ -89,17 +89,24 @@ class XcodeDetector {
 
         guard let resultString = result.stringValue, !resultString.isEmpty else { return nil }
 
-        var projects: [XcodeProject] = []
-        let entries = resultString.components(separatedBy: ":::")
-        for entry in entries where !entry.isEmpty {
-            if let project = parseProject(from: entry) {
-                projects.append(project)
-            }
-        }
-        return projects
+        return Self.parseProjectList(from: resultString)
     }
 
-    private func parseProject(from string: String) -> XcodeProject? {
+    // MARK: - Parsing (pure, unit-tested)
+
+    /// Parses the `:::`-separated list of `name|||path` entries returned by the
+    /// "all workspace documents" AppleScript. Empty entries (notably the trailing
+    /// one after the final `:::`) and malformed entries are skipped.
+    static func parseProjectList(from string: String) -> [XcodeProject] {
+        string.components(separatedBy: ":::")
+            .filter { !$0.isEmpty }
+            .compactMap { parseProject(from: $0) }
+    }
+
+    /// Parses one `name|||path` entry. The name has any `.xcodeproj`/
+    /// `.xcworkspace` suffix stripped. Returns nil unless the entry is exactly
+    /// two `|||`-separated fields.
+    static func parseProject(from string: String) -> XcodeProject? {
         let components = string.components(separatedBy: "|||")
         guard components.count == 2 else { return nil }
 
@@ -109,6 +116,16 @@ class XcodeDetector {
         let path = components[1]
 
         return XcodeProject(name: name, path: path)
+    }
+
+    /// Extracts the project name from an Xcode window title like
+    /// "MyApp — MyFile.swift": the segment before the em dash Xcode uses,
+    /// whitespace-trimmed. A title without that separator is returned whole.
+    static func projectName(fromWindowTitle windowName: String) -> String {
+        let projectName = windowName.components(separatedBy: " — ").first
+            ?? windowName.components(separatedBy: " – ").first
+            ?? windowName
+        return projectName.trimmingCharacters(in: .whitespaces)
     }
 
     // MARK: - Window title fallback
@@ -138,11 +155,7 @@ class XcodeDetector {
                   !windowName.isEmpty,
                   window[kCGWindowLayer as String] as? Int == 0 else { continue }
 
-            let projectName = windowName.components(separatedBy: " — ").first
-                ?? windowName.components(separatedBy: " – ").first
-                ?? windowName
-
-            let trimmed = projectName.trimmingCharacters(in: .whitespaces)
+            let trimmed = Self.projectName(fromWindowTitle: windowName)
             if !trimmed.isEmpty && !seen.contains(trimmed) {
                 seen.insert(trimmed)
                 projects.append(XcodeProject(name: trimmed, path: ""))

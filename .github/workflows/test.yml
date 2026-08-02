@@ -1,0 +1,38 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # Xcode 16+ ships the Metal compiler as an on-demand component that isn't
+      # always preinstalled on the runner image (see release.yml). The test build
+      # compiles the same app target, so it needs the toolchain too.
+      - name: Install Metal toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
+      # Unit tests run in Debug against the host app. CI has no Developer ID
+      # certificate, so disable code signing for the test build.
+      - name: Run tests
+        run: |
+          xcodebuild test \
+            -project Notchy.xcodeproj \
+            -scheme Notchy \
+            -destination 'platform=macOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO

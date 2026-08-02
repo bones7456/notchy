@@ -21,6 +21,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let hoverHideDelay: TimeInterval = 0.06
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Running as the host for a unit-test bundle: skip all UI, global-hotkey,
+        // and network setup so tests can `@testable import Notchy` without the
+        // real menu-bar app spinning up (and failing headless in CI).
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
+
         setupStatusItem()
         setupPanel()
         if settings.showNotch {
