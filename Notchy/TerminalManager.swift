@@ -40,6 +40,9 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private var preeditPanel: NSPanel?
     private var preeditLabel: NSTextField?
 
+    // Observer for our window's occlusion state — see `viewDidMoveToWindow`.
+    private var occlusionObserver: NSObjectProtocol?
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     // MARK: - Force-click dictionary lookup
@@ -443,6 +446,9 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
             NSEvent.removeMonitor(monitor)
         }
         statusTimer?.invalidate()
+        if let observer = occlusionObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         preeditPanel?.orderOut(nil)
     }
 
@@ -774,6 +780,35 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         }
     }
 
+    /// SwiftTerm only invalidates the rows that changed, and its
+    /// `disableFullRedrawOnAnyChanges` opt-in (on by default since Big Sur)
+    /// stops AppKit from widening that into a full-view redraw. But AppKit
+    /// throws away a window's backing store once the window is ordered out or
+    /// fully occluded, and on the way back it only redraws what is still
+    /// marked dirty — every row that didn't change in the meantime stays
+    /// blank, so the panel comes back almost entirely black until a scroll or
+    /// resize forces a full repaint. Repaint from scratch whenever we land in
+    /// a window or that window becomes visible again.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+
+        if let observer = occlusionObserver {
+            NotificationCenter.default.removeObserver(observer)
+            occlusionObserver = nil
+        }
+        guard let window else { return }
+
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.window?.occlusionState.contains(.visible) == true else { return }
+            self.needsDisplay = true
+        }
+        needsDisplay = true
+    }
+
     private func ensurePreeditPanel() -> (NSPanel, NSTextField) {
         if let panel = preeditPanel, let label = preeditLabel {
             return (panel, label)
@@ -1054,6 +1089,18 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
     func visibleText(for sessionId: UUID) -> String? {
         guard let terminal = terminals[sessionId] as? ClickThroughTerminalView else { return nil }
         return terminal.extractVisibleText()
+    }
+
+    /// Force a full repaint of every terminal that's currently in a window.
+    /// Called when the panel is shown — see the note in
+    /// `ClickThroughTerminalView.viewDidMoveToWindow` for why a terminal that
+    /// was hidden can come back with most of its rows unpainted. The occlusion
+    /// notification alone can land after the first frame is drawn, so we also
+    /// invalidate directly at show time to keep that frame from flashing black.
+    func redrawVisibleTerminals() {
+        for terminal in terminals.values where terminal.window != nil {
+            terminal.needsDisplay = true
+        }
     }
 
     func terminalDimensions(for sessionId: UUID) -> (cols: Int, rows: Int)? {

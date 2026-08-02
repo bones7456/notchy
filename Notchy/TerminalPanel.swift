@@ -214,6 +214,10 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
         // then animate it down into place.
         visualEffect.frame = NSRect(x: 0, y: panelHeight, width: panelWidth, height: panelHeight)
         makeKeyAndOrderFront(nil)
+        // The backing store was dropped while we were hidden; SwiftTerm only
+        // invalidates rows it knows changed, so ask for a full repaint before
+        // the first frame of the slide-in is drawn.
+        TerminalManager.shared.redrawVisibleTerminals()
 
         isAnimating = true
         isShown = true
