@@ -114,7 +114,7 @@ struct QuickSwitcherOverlay: View {
 
     /// Case-insensitive subsequence match — every character of `query` must
     /// appear in `text` in order, not necessarily contiguously.
-    private static func fuzzyMatch(query: String, in text: String) -> Bool {
+    static func fuzzyMatch(query: String, in text: String) -> Bool {
         var textIndex = text.startIndex
         for queryChar in query.lowercased() {
             guard let match = text[textIndex...].firstIndex(where: { $0.lowercased().first == queryChar }) else {
