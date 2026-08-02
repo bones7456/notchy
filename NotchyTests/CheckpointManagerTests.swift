@@ -14,19 +14,32 @@ struct CheckpointManagerTests {
 
     // MARK: - Git test harness
 
+    private enum GitHarnessError: Error {
+        case commandFailed(args: [String], status: Int32, message: String)
+    }
+
     @discardableResult
     private func runGit(_ args: [String], in dir: URL) throws -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         p.arguments = args
         p.currentDirectoryURL = dir
-        let out = Pipe()
+        let out = Pipe(), err = Pipe()
         p.standardOutput = out
-        p.standardError = Pipe()
+        p.standardError = err
         try p.run()
         p.waitUntilExit()
-        return String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+
+        let stdout = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // A failed setup command (init/config) must surface loudly, not let a
+        // test proceed against a half-built repo and pass or fail misleadingly.
+        guard p.terminationStatus == 0 else {
+            let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            throw GitHarnessError.commandFailed(args: args, status: p.terminationStatus,
+                                                message: stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return stdout
     }
 
     /// A fresh git repo in a temp directory (with a committer identity so

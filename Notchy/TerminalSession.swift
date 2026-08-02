@@ -90,7 +90,9 @@ enum AgentKind: String, Equatable {
         let codexAvailable = codexEnabled && hasCodexMarker
 
         switch (claudeAvailable, codexAvailable) {
-        case (true, true): return preferred
+        // Only .claude/.codex are meaningful as a preference; a stored .none
+        // falls back to Claude, matching SettingsManager.preferredAgent's contract.
+        case (true, true): return preferred == .codex ? .codex : .claude
         case (true, false): return .claude
         case (false, true): return .codex
         case (false, false): return .none

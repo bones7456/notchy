@@ -8,8 +8,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// NotchWindows for external displays, keyed by CGDirectDisplayID.
     private var externalNotchWindows: [CGDirectDisplayID: NotchWindow] = [:]
     private var screenChangeObserver: Any?
-    private let sessionStore = SessionStore.shared
-    private let settings = SettingsManager.shared
+    // Lazy so merely instantiating the delegate doesn't construct the shared
+    // singletons. Under XCTest, applicationDidFinishLaunching returns before it
+    // touches either, so SessionStore.shared never reads the user's real prefs
+    // or starts its 5s Xcode-detection poll during a test run.
+    private lazy var sessionStore = SessionStore.shared
+    private lazy var settings = SettingsManager.shared
     private var hoverHideTimer: Timer?
     private var hoverGlobalMonitor: Any?
     private var hoverLocalMonitor: Any?

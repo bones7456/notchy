@@ -23,7 +23,13 @@ Release packaging is script-driven:
 ./scripts/package_release.sh
 ```
 
-There are currently no tests or lint commands configured. If a change touches shared behavior, validate with a Debug build and manual app testing.
+Unit tests live in the `NotchyTests` target (Swift Testing). Run them with:
+
+```bash
+xcodebuild test -project Notchy.xcodeproj -scheme Notchy -destination 'platform=macOS'
+```
+
+`.github/workflows/test.yml` runs the same on every push to `main` and every PR. No lint is configured yet. If a change touches shared behavior, add or update a test alongside it, and validate with a Debug build.
 
 ## Repository Layout
 

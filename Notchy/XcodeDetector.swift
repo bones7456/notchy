@@ -119,13 +119,17 @@ class XcodeDetector {
     }
 
     /// Extracts the project name from an Xcode window title like
-    /// "MyApp — MyFile.swift": the segment before the em dash Xcode uses,
-    /// whitespace-trimmed. A title without that separator is returned whole.
+    /// "MyApp — MyFile.swift": the segment before the dash separator,
+    /// whitespace-trimmed. Xcode uses an em dash (" — "); some versions/locales
+    /// use an en dash (" – "), so both are honored. A title with neither is
+    /// returned whole.
     static func projectName(fromWindowTitle windowName: String) -> String {
-        let projectName = windowName.components(separatedBy: " — ").first
-            ?? windowName.components(separatedBy: " – ").first
-            ?? windowName
-        return projectName.trimmingCharacters(in: .whitespaces)
+        for separator in [" — ", " – "] {
+            if let range = windowName.range(of: separator) {
+                return String(windowName[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return windowName.trimmingCharacters(in: .whitespaces)
     }
 
     // MARK: - Window title fallback

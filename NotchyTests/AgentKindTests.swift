@@ -57,6 +57,10 @@ struct AgentKindTests {
         #expect(AgentKind.resolve(hasClaudeMarker: true, hasCodexMarker: true,
                                   claudeEnabled: true, codexEnabled: true,
                                   preferred: .codex) == .codex)
+        // A .none preference falls back to Claude rather than launching nothing.
+        #expect(AgentKind.resolve(hasClaudeMarker: true, hasCodexMarker: true,
+                                  claudeEnabled: true, codexEnabled: true,
+                                  preferred: .none) == .claude)
     }
 
     @Test("Both markers but only one integration on → preference is ignored")

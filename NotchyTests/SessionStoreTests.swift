@@ -34,7 +34,16 @@ struct SessionStoreTests {
         return (suite, { suite.removePersistentDomain(forName: name) })
     }
 
-    private func makeStore(_ terminal: FakeTerminal = FakeTerminal())
+    // Two overloads instead of a `= FakeTerminal()` default argument: default
+    // argument expressions are evaluated in a nonisolated context, and
+    // FakeTerminal's init is MainActor-isolated, which warns (and may become an
+    // error under stricter concurrency checking). The no-arg overload builds the
+    // fake inside its own MainActor body instead.
+    private func makeStore() -> (store: SessionStore, cleanup: () -> Void) {
+        makeStore(FakeTerminal())
+    }
+
+    private func makeStore(_ terminal: FakeTerminal)
         -> (store: SessionStore, cleanup: () -> Void) {
         let (suite, cleanup) = makeSuite()
         return (SessionStore(defaults: suite, terminal: terminal, autostart: false), cleanup)

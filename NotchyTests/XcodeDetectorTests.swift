@@ -96,12 +96,9 @@ struct XcodeDetectorTests {
         #expect(XcodeDetector.projectName(fromWindowTitle: "JustAProject") == "JustAProject")
     }
 
-    @Test("Only the em dash is treated as a separator — an en-dash title is kept whole")
-    func windowTitleEnDashIsNotASeparator() {
-        // Xcode uses an em dash (" — "). The en-dash branch in the source never
-        // fires (components(separatedBy:).first is never nil), so an en-dash-only
-        // title falls through to the whole (trimmed) string. Documented, not a bug.
-        #expect(XcodeDetector.projectName(fromWindowTitle: "MyApp – MyFile.swift") == "MyApp – MyFile.swift")
+    @Test("An en-dash title is split too (Xcode uses em dash, some locales en dash)")
+    func windowTitleEnDash() {
+        #expect(XcodeDetector.projectName(fromWindowTitle: "MyApp – MyFile.swift") == "MyApp")
     }
 
     // MARK: - XcodeProject.directoryPath
