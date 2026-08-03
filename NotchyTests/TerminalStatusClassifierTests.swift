@@ -149,16 +149,4 @@ struct TerminalStatusClassifierTests {
     func idleLinePrecision(_ line: String, _ expected: Bool) {
         #expect(TerminalStatusClassifier.isIdleLine(line) == expected)
     }
-
-    // MARK: - hasIdleForLine precision (parentheses guard)
-
-    @Test("\"Idle for 30s\" counts, but a parenthesized duration does not", arguments: [
-        ("Idle for 30s", true),
-        ("waiting for input ... 5s", true),
-        ("thinking (5s)", false),   // parentheses => thinking duration, not idle
-        ("done", false),
-    ])
-    func idleForPrecision(_ line: String, _ expected: Bool) {
-        #expect(TerminalStatusClassifier.hasIdleForLine(line) == expected)
-    }
 }

@@ -36,27 +36,6 @@ enum TerminalStatusClassifier {
     /// Claude spinner glyphs shown while the token counter is animating.
     static let spinnerCharacters: Set<Character> = ["·", "✢", "✳", "✶", "✻", "✽"]
 
-    /// Checks for a line like "Idle for 30s" — must contain " for " and end with "s",
-    /// but must NOT contain parentheses (which indicate thinking duration, not true idle).
-    static func hasIdleForLine(_ text: String) -> Bool {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        return lines.contains { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.contains(" for ") else { return false }
-            guard trimmed.hasSuffix("s") else { return false }
-            guard !trimmed.contains("(") && !trimmed.contains(")") else { return false }
-            return true
-        }
-    }
-
-    /// Checks for the user prompt indicator: ❯ followed by a digit (1-9)
-    static func hasUserPrompt(_ text: String) -> Bool {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        return lines.contains { line in
-            isUserPromptLine(String(line))
-        }
-    }
-
     static func hasTokenCounterLine(_ text: String) -> Bool {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         return lines.contains { line in

@@ -27,6 +27,9 @@ class SessionStore {
     @ObservationIgnored private let defaults: UserDefaults
     /// Terminal lifecycle/CWD access — the real `TerminalManager` in the app, a fake in tests.
     @ObservationIgnored private let terminal: SessionTerminalControlling
+    /// False in tests: keeps the Xcode-detection poll disarmed for this store's
+    /// whole lifetime, not just at init.
+    @ObservationIgnored private let autostart: Bool
 
     var sessions: [TerminalSession] = []
     var activeSessionId: UUID? {
@@ -141,6 +144,7 @@ class SessionStore {
          autostart: Bool = true) {
         self.defaults = defaults
         self.terminal = terminal
+        self.autostart = autostart
         // Set the stored property directly (didSet doesn't fire during init) so
         // reading the persisted flag doesn't kick off the polling timer early.
         self.isPinned = defaults.object(forKey: "isPinned") == nil
@@ -201,10 +205,12 @@ class SessionStore {
         pollingTimer?.invalidate()
         pollingTimer = nil
 
-        if isPinned {
-            pollingTimer = Timer.scheduledTimer(withTimeInterval: Self.pollingInterval, repeats: true) { [weak self] _ in
-                self?.detectAllXcodeProjectsAsync()
-            }
+        // `autostart: false` has to hold for the store's whole lifetime, not just
+        // init: isPinned's didSet lands here, so without this guard a test that
+        // merely toggles isPinned would arm a real 5s timer firing AppleScript.
+        guard autostart, isPinned else { return }
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: Self.pollingInterval, repeats: true) { [weak self] _ in
+            self?.detectAllXcodeProjectsAsync()
         }
     }
 
@@ -517,7 +523,7 @@ class SessionStore {
                     if let started = workingStartedAt, Date().timeIntervalSince(started) < 10 {
                         return
                     }
-                    SessionStore.shared.updateTerminalStatus(id, status: .taskCompleted)
+                    self.updateTerminalStatus(id, status: .taskCompleted)
                     // Auto-clear taskCompleted after 3 seconds
                     try? await Task.sleep(for: .seconds(3))
                     guard let idx2 = self.sessions.firstIndex(where: { $0.id == id }),
