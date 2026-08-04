@@ -43,6 +43,15 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     // Observer for our window's occlusion state — see `viewDidMoveToWindow`.
     private var occlusionObserver: NSObjectProtocol?
 
+    // Timestamp of the last display pass — see `viewWillDraw`.
+    private var lastDrawTime: CFTimeInterval = 0
+
+    /// A gap this long (seconds) between display passes means the terminal
+    /// stopped producing output, which is the only window in which our pixels
+    /// can go missing. Short enough that any pause a user would notice is
+    /// covered, long enough that streaming output never trips it.
+    private static let repaintIdleThreshold: CFTimeInterval = 0.5
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     // MARK: - Force-click dictionary lookup
@@ -780,15 +789,43 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         }
     }
 
-    /// SwiftTerm only invalidates the rows that changed, and its
-    /// `disableFullRedrawOnAnyChanges` opt-in (on by default since Big Sur)
-    /// stops AppKit from widening that into a full-view redraw. But AppKit
-    /// throws away a window's backing store once the window is ordered out or
-    /// fully occluded, and on the way back it only redraws what is still
-    /// marked dirty — every row that didn't change in the meantime stays
-    /// blank, so the panel comes back almost entirely black until a scroll or
-    /// resize forces a full repaint. Repaint from scratch whenever we land in
-    /// a window or that window becomes visible again.
+    /// Repaint the whole view on the first display pass after any pause.
+    ///
+    /// SwiftTerm invalidates only the rows that changed, so AppKit hands
+    /// `draw(_:)` a dirty rect covering those rows and composites everything
+    /// else from the layer's existing backing store. Those preserved pixels
+    /// can go missing without AppKit widening the dirty rect in response —
+    /// the panel is a large translucent floating window that gets ordered
+    /// out, occluded and carried across Spaces, and CoreAnimation is free to
+    /// purge the backing store of a layer it considers offscreen. When that
+    /// happens every row that hasn't changed since stays black, and it stays
+    /// that way until something forces a full repaint (previously: a scroll
+    /// or a resize).
+    ///
+    /// We can't observe the purge, but we know when it can happen: only while
+    /// nothing is being drawn. So treat the first pass after a gap as suspect
+    /// and repaint everything. Invalidating from `viewWillDraw` is honored by
+    /// the display pass already in flight, and a terminal that is streaming
+    /// output draws continuously — so this costs at most one full repaint per
+    /// idle gap and nothing at all during the fast path this optimization
+    /// exists for.
+    ///
+    /// `redrawVisibleTerminals` and the occlusion observer below stay as the
+    /// proactive half: they get a pass *scheduled* for a terminal that is
+    /// sitting idle and would otherwise never draw again on its own.
+    override func viewWillDraw() {
+        let now = CACurrentMediaTime()
+        if now - lastDrawTime > Self.repaintIdleThreshold {
+            setNeedsDisplay(bounds)
+        }
+        lastDrawTime = now
+        super.viewWillDraw()
+    }
+
+    /// Repaint from scratch whenever we land in a window, and schedule one
+    /// whenever that window becomes visible again — see `viewWillDraw` for
+    /// why a terminal that was hidden can come back with most of its rows
+    /// unpainted.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
 
@@ -899,6 +936,10 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
     static let shared = TerminalManager()
 
     private var terminals: [UUID: LocalProcessTerminalView] = [:]
+
+    /// Guards the re-entrant `sizeChanged` our own repair triggers — see the
+    /// note on that method.
+    private var isRestoringTerminalSize = false
 
     static let minFontSize: CGFloat = 8
     static let maxFontSize: CGFloat = 32
@@ -1064,7 +1105,37 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
 
     // MARK: - LocalProcessTerminalViewDelegate
 
-    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+    /// Put the terminal back to the size the panel actually gives it whenever
+    /// an escape sequence moved it somewhere else.
+    ///
+    /// The case that motivated this was DECCOLM (`ESC [ ? 3 h` / `ESC [ ? 3 l`),
+    /// which resizes the buffer to 132 or 80 columns. `xterm-256color`'s reset
+    /// string `rs2` is `ESC [ ! p ESC [ ? 3 ; 4 l …`, so anything that resets
+    /// the terminal — an ssh or tmux session tearing down, `tput init`, and
+    /// `reset` itself — snapped the terminal to 80 columns and left everything
+    /// to the right of them blank. SwiftTerm now ignores DECCOLM by default
+    /// (our fork, matching xterm's `allowC132`), but an application can still
+    /// turn it back on with `ESC [ ? 40 h`, and XTWINOPS can ask for a resize
+    /// too.
+    ///
+    /// The panel's geometry is the only authority on how big a terminal is, so
+    /// re-derive the size from the view whenever something else moved it.
+    /// `setFrameSize` recomputes cols/rows from the frame and does nothing when
+    /// they already agree — the case for every resize the user actually asked
+    /// for — so this only ever fires on a size the terminal gave itself.
+    /// Deferred to the next runloop turn so we're not resizing the buffer
+    /// underneath the escape-sequence handler that got us here.
+    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
+        guard !isRestoringTerminalSize else { return }
+        DispatchQueue.main.async { [weak self, weak source] in
+            guard let self, let source else { return }
+            // A frame with no width would compute zero columns.
+            guard source.frame.width > 1, source.frame.height > 1 else { return }
+            self.isRestoringTerminalSize = true
+            source.setFrameSize(source.frame.size)
+            self.isRestoringTerminalSize = false
+        }
+    }
 
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
 
@@ -1092,11 +1163,11 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
     }
 
     /// Force a full repaint of every terminal that's currently in a window.
-    /// Called when the panel is shown — see the note in
-    /// `ClickThroughTerminalView.viewDidMoveToWindow` for why a terminal that
-    /// was hidden can come back with most of its rows unpainted. The occlusion
-    /// notification alone can land after the first frame is drawn, so we also
-    /// invalidate directly at show time to keep that frame from flashing black.
+    /// Called whenever the panel comes back into view — see the note on
+    /// `ClickThroughTerminalView.viewWillDraw` for why a terminal that was
+    /// hidden can come back with most of its rows unpainted. This is what
+    /// gets an idle terminal (one producing no output, so drawing nothing on
+    /// its own) to paint at all; `viewWillDraw` is what makes that pass full.
     func redrawVisibleTerminals() {
         for terminal in terminals.values where terminal.window != nil {
             terminal.needsDisplay = true

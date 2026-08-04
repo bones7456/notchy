@@ -130,6 +130,13 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
             name: NSWindow.didEndLiveResizeNotification,
             object: self
         )
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(activeSpaceDidChange(_:)),
+            name: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil
+        )
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
@@ -191,6 +198,7 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
         guard !isAnimating else { return }
         if isShown {
             makeKeyAndOrderFront(nil)
+            TerminalManager.shared.redrawVisibleTerminals()
             return
         }
 
@@ -300,6 +308,18 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
     @objc func windowDidBecomeKey(_ notification: Notification) {
         sessionStore.panelDidBecomeKey()
         updateOpacity()
+        // Coming back from another window is one of the moments the terminals'
+        // pixels can have been dropped underneath us — see the note on
+        // `ClickThroughTerminalView.viewWillDraw`.
+        TerminalManager.shared.redrawVisibleTerminals()
+    }
+
+    /// A pinned panel joins every Space, so it survives a Space switch without
+    /// ever being ordered out or reported as occluded — but its surface is
+    /// rebuilt on the way over. Repaint the terminals when we land.
+    @objc private func activeSpaceDidChange(_ notification: Notification) {
+        guard isShown else { return }
+        TerminalManager.shared.redrawVisibleTerminals()
     }
 
     @objc func windowDidResignKey(_ notification: Notification) {
