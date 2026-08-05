@@ -22,13 +22,17 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private var pendingURL: URL?
     private var pendingCWD: String?
 
-    // SwiftTerm forces yDisp back to yBase on every line scroll because its
-    // `userScrolling` flag is never set from the scroll wheel path. We track
-    // the live bottom (yBase) ourselves: after super.dataReceived runs, if
-    // yDisp moved we know it now equals yBase, so we record it. Status
-    // detection reads from this row so it sees the latest output even while
-    // the user is browsing scrollback; the dataReceived override also uses
-    // it to restore the user's manual scroll position after each chunk.
+    // The buffer row of the live bottom (SwiftTerm's `yBase`, which it keeps
+    // internal). Status detection reads the grid from this row so it sees the
+    // latest output even while the user is browsing scrollback.
+    //
+    // We snapshot it from `yDisp` on every chunk that arrives while the
+    // viewport is at the bottom — the one moment the two are equal. Recording
+    // on *every* such chunk (rather than only when yDisp moved) matters: once
+    // the scrollback fills up, `Terminal.scroll` stops advancing yBase and
+    // recycles lines instead, so yDisp never changes again and a value that
+    // went stale — from a resize, a font change, or a spell in scrollback —
+    // would otherwise never be corrected.
     private var latestYBase: Int = 0
 
     // SwiftTerm's NSTextInputClient implementation drops marked (preedit)
@@ -691,36 +695,29 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         allowMouseReporting = terminal.mouseMode != .off
 
         let wasAlternate = terminal.isCurrentBufferAlternate
-        let preYDisp = terminal.buffer.yDisp
-        // Only treat the viewport as "in scrollback" on the normal buffer.
-        // The alternate buffer (vim/less) has no scrollback and its yDisp is
-        // unrelated to latestYBase, so comparing them would spuriously fire.
-        let wasInScrollback = !wasAlternate && preYDisp < latestYBase
 
         super.dataReceived(slice: slice)
         hasNewData = true
 
         // Re-read the buffer: super may have switched buffers (entering or
-        // leaving vim via \e[?1049h/l). yDisp isn't comparable across that
-        // switch, so skip all scroll bookkeeping unless we stayed on the
-        // normal buffer for the whole chunk. Without this guard, leaving the
-        // alternate screen runs scrollTo on the freshly-restored normal
-        // buffer and snaps it to the top.
+        // leaving vim via \e[?1049h/l). The alternate buffer's yDisp is
+        // unrelated to the normal buffer's live bottom, so only record when we
+        // stayed on the normal buffer for the whole chunk.
         guard !wasAlternate, !terminal.isCurrentBufferAlternate else { return }
 
-        // Snapshot the new yBase so extractAllLines can read the live bottom
-        // even when the viewport is parked in scrollback.
-        if terminal.buffer.yDisp != preYDisp {
+        if isViewportAtBottom {
             latestYBase = terminal.buffer.yDisp
         }
+    }
 
-        // Only restore the viewport if the user was already browsing
-        // scrollback before this chunk arrived. When the user is at the
-        // bottom (preYDisp == old latestYBase), let SwiftTerm's auto-scroll
-        // keep them there.
-        if wasInScrollback {
-            scrollTo(row: preYDisp, notifyAccessibility: false)
-        }
+    /// Whether the viewport is following the live bottom rather than parked in
+    /// scrollback — the only moment `yDisp` is guaranteed to equal `yBase`.
+    ///
+    /// `scrollPosition` reports 1 once `yDisp` reaches the last scrollback row,
+    /// and `canScroll` is false when the whole buffer fits on screen, which
+    /// makes the viewport trivially "at the bottom".
+    private var isViewportAtBottom: Bool {
+        !canScroll || scrollPosition >= 1
     }
 
     private func evaluateStatus(for id: UUID) {
