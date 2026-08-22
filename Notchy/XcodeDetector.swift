@@ -17,23 +17,35 @@ struct XcodeProject: Equatable {
 class XcodeDetector {
     static let shared = XcodeDetector()
 
+    /// Outcome of an AppleScript query. `.success` is authoritative even when it
+    /// carries no projects — Xcode showing only its "Welcome to Xcode" window has
+    /// zero workspace documents, and that must not be confused with a failed
+    /// query. `.unavailable` means the script never ran (Xcode not scriptable,
+    /// automation permission denied), which is the only case worth falling back
+    /// to window titles for.
+    private enum QueryOutcome<T> {
+        case success(T)
+        case unavailable
+    }
+
     /// Detects the frontmost Xcode project
     func detectFrontmostProject() -> XcodeProject? {
-        if let project = queryFrontViaAppleScript() {
+        switch queryFrontViaAppleScript() {
+        case .success(let project):
             return project
+        case .unavailable:
+            return queryViaWindowTitle()
         }
-        if let project = queryViaWindowTitle() {
-            return project
-        }
-        return nil
     }
 
     /// Detects ALL open Xcode workspace documents
     func detectAllProjects() -> [XcodeProject] {
-        if let projects = queryAllViaAppleScript(), !projects.isEmpty {
+        switch queryAllViaAppleScript() {
+        case .success(let projects):
             return projects
+        case .unavailable:
+            return allProjectsViaWindowTitles()
         }
-        return allProjectsViaWindowTitles()
     }
 
     // MARK: - AppleScript
@@ -44,31 +56,30 @@ class XcodeDetector {
         }
     }
 
-    private func queryFrontViaAppleScript() -> XcodeProject? {
-        guard isXcodeRunning() else { return nil }
+    private func queryFrontViaAppleScript() -> QueryOutcome<XcodeProject?> {
+        guard isXcodeRunning() else { return .success(nil) }
 
         let script = """
         tell application "Xcode"
-            if (count of workspace documents) > 0 then
-                set activeDoc to front workspace document
-                set docPath to path of activeDoc
-                set docName to name of activeDoc
-                return docName & "|||" & docPath
-            end if
+            if (count of workspace documents) is 0 then return ""
+            set activeDoc to front workspace document
+            set docPath to path of activeDoc
+            set docName to name of activeDoc
+            return docName & "|||" & docPath
         end tell
         """
 
-        guard let appleScript = NSAppleScript(source: script) else { return nil }
+        guard let appleScript = NSAppleScript(source: script) else { return .unavailable }
         var error: NSDictionary?
         let result = appleScript.executeAndReturnError(&error)
-        if error != nil { return nil }
+        if error != nil { return .unavailable }
 
-        guard let resultString = result.stringValue else { return nil }
-        return Self.parseProject(from: resultString)
+        guard let resultString = result.stringValue else { return .unavailable }
+        return .success(Self.parseProject(from: resultString))
     }
 
-    private func queryAllViaAppleScript() -> [XcodeProject]? {
-        guard isXcodeRunning() else { return nil }
+    private func queryAllViaAppleScript() -> QueryOutcome<[XcodeProject]> {
+        guard isXcodeRunning() else { return .success([]) }
 
         let script = """
         tell application "Xcode"
@@ -82,14 +93,14 @@ class XcodeDetector {
         end tell
         """
 
-        guard let appleScript = NSAppleScript(source: script) else { return nil }
+        guard let appleScript = NSAppleScript(source: script) else { return .unavailable }
         var error: NSDictionary?
         let result = appleScript.executeAndReturnError(&error)
-        if error != nil { return nil }
+        if error != nil { return .unavailable }
 
-        guard let resultString = result.stringValue, !resultString.isEmpty else { return nil }
+        guard let resultString = result.stringValue else { return .unavailable }
 
-        return Self.parseProjectList(from: resultString)
+        return .success(Self.parseProjectList(from: resultString))
     }
 
     // MARK: - Parsing (pure, unit-tested)
