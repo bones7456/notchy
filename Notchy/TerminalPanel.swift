@@ -400,6 +400,17 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
                 return true
             }
         }
+        // Cmd+← / Cmd+→: previous/next tab, wrapping around at both ends.
+        // ClickThroughTerminalView's key monitor deliberately lets these through
+        // instead of encoding an arrow for the shell.
+        if cmdOnly, event.keyCode == 123 || event.keyCode == 124 {
+            if event.keyCode == 123 {
+                sessionStore.selectPreviousSession()
+            } else {
+                sessionStore.selectNextSession()
+            }
+            return true
+        }
         // Cmd+Shift+P: toggle pin window. charactersIgnoringModifiers keeps the
         // Shift case, so this arrives as "P" — compare case-insensitively.
         if event.modifierFlags.intersection([.command, .shift, .control, .option]) == [.command, .shift],

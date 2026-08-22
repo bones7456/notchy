@@ -13,6 +13,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **AI agent auto-launch** — starts `claude` for projects with `CLAUDE.md`, or `codex` for projects with `AGENTS.md`
 - **Multi-session tabs** — run multiple Claude Code or Codex sessions side by side
 - **Drag to reorder tabs** — press and drag a tab left or right to change its position; drop it and the rest snap into place. Reordering also renumbers the Cmd+1…9 shortcuts
+- **Cycle tabs** — Cmd+← and Cmd+→ step to the tab on either side, wrapping around at both ends, so Cmd+← from the first tab lands on the last. Ctrl+Tab / Ctrl+Shift+Tab do the same
 - **Quick switcher** — Cmd+K opens a fuzzy-searchable list of sessions sorted by most-recently-used; type to filter, ↑↓ to move the selection, Enter to jump, Esc to cancel and return focus to the terminal you were in
 - **Pin tabs to persist** — right-click a `+` tab → **Pin Tab** to keep it across app restarts; Notchy remembers the tab's working directory and re-runs agent auto-launch on relaunch
 - **Shadow tabs** — right-click an Xcode or pinned tab → **Shadow Tab** to spawn a plain shell sibling cd'd into the same directory, for ad-hoc git/build commands without disturbing the agent

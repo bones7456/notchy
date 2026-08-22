@@ -69,6 +69,8 @@ enum ReservedShortcut {
         (51, .command, "Kill line"),                     // ⌘⌫
         (48, .control, "Next tab"),                      // Ctrl+Tab
         (48, [.control, .shift], "Previous tab"),        // Ctrl+⇧Tab
+        (124, .command, "Next tab"),                     // ⌘→
+        (123, .command, "Previous tab"),                 // ⌘←
         (36, .shift, "Newline"),                         // ⇧Return
     ]
 

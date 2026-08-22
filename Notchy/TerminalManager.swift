@@ -518,6 +518,14 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
                 return nil
             }
 
+            // Cmd+←/→ switch tabs. The panel's performKeyEquivalent acts on them,
+            // but local monitors run first, so they have to be passed through here
+            // rather than encoded as an arrow for the shell.
+            if event.keyCode == 123 || event.keyCode == 124,
+               event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command {
+                return event
+            }
+
             let arrowCode: String?
             switch event.keyCode {
             case 126: arrowCode = "A" // Up

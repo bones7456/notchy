@@ -35,6 +35,17 @@ struct QuickInputTests {
         #expect(ReservedShortcut.conflict(keyCode: 36, modifiers: shift) == "Newline")        // ⇧↩
     }
 
+    @Test("Both tab-cycling bindings are reserved")
+    func tabCyclingCombosConflict() {
+        #expect(ReservedShortcut.conflict(keyCode: 123, modifiers: cmd) == "Previous tab")  // ⌘←
+        #expect(ReservedShortcut.conflict(keyCode: 124, modifiers: cmd) == "Next tab")      // ⌘→
+        #expect(ReservedShortcut.conflict(keyCode: 48, modifiers: ctrl) == "Next tab")      // ⌃⇥
+        #expect(ReservedShortcut.conflict(keyCode: 48, modifiers: ctrl | shift) == "Previous tab")
+        // The arrows are only reserved with ⌘ alone — ⌘⌥← stays bindable.
+        #expect(ReservedShortcut.conflict(keyCode: 123, modifiers: cmd | opt) == nil)
+        #expect(ReservedShortcut.conflict(keyCode: 123, modifiers: 0) == nil)
+    }
+
     @Test("Shift disambiguates same-key combos")
     func shiftDisambiguates() {
         // ⌘T is "New tab"; ⌘⇧T is "Shadow tab" — the plain-⌘ entry must not
