@@ -56,12 +56,15 @@ if [ -n "${SIGNING_IDENTITY:-}" ]; then
         DEVELOPMENT_TEAM=RHVTXHK83V
     )
 fi
+# SwiftTerm ships a build-tool plugin (SwiftTermBuildInfoPlugin). Xcode blocks
+# it until it's trusted interactively, which headless CI can't do.
 xcodebuild archive \
     -project "$XCODE_PROJECT" \
     -scheme "$SCHEME" \
     -configuration "$CONFIGURATION" \
     -destination 'generic/platform=macOS' \
     -archivePath "$ARCHIVE_PATH" \
+    -skipPackagePluginValidation \
     SKIP_INSTALL=NO \
     "${ARCHIVE_SIGN_ARGS[@]}"
 

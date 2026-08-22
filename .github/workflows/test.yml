@@ -28,6 +28,9 @@ jobs:
 
       # Unit tests run in Debug against the host app. CI has no Developer ID
       # certificate, so disable code signing for the test build.
+      # SwiftTerm ships a build-tool plugin (SwiftTermBuildInfoPlugin); Xcode
+      # refuses to run it until it's trusted interactively, which a runner
+      # can't do — so validation is skipped explicitly.
       - name: Run tests
         run: |
           xcodebuild test \
@@ -35,4 +38,5 @@ jobs:
             -scheme Notchy \
             -destination 'platform=macOS' \
             -configuration Debug \
+            -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO

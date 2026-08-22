@@ -110,8 +110,11 @@ The build is signed with Developer ID and notarized by Apple, so macOS opens it 
 Open `Notchy.xcodeproj` in Xcode and build (Cmd+B), or from the command line:
 
 ```bash
-xcodebuild -project Notchy.xcodeproj -scheme Notchy -configuration Debug build
+xcodebuild -project Notchy.xcodeproj -scheme Notchy -configuration Debug build -skipPackagePluginValidation
 ```
+
+(SwiftTerm ships a build-tool plugin; Xcode prompts to trust it on first build in the
+GUI, and `-skipPackagePluginValidation` is the command-line equivalent.)
 
 ## Dependencies
 

@@ -7,8 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Open `Notchy.xcodeproj` in Xcode and build (Cmd+B). Or from the command line:
 
 ```bash
-xcodebuild -project Notchy.xcodeproj -scheme Notchy -configuration Debug build
+xcodebuild -project Notchy.xcodeproj -scheme Notchy -configuration Debug build -skipPackagePluginValidation
 ```
+
+`-skipPackagePluginValidation` is required on the command line: SwiftTerm ships a
+build-tool plugin (`SwiftTermBuildInfoPlugin`) that Xcode refuses to run until it's
+trusted, and the trust prompt only exists in the GUI. In Xcode, approve it once via
+"Trust & Enable" instead.
 
 ## Tests
 
@@ -18,7 +23,7 @@ short-circuits when `XCTestConfigurationFilePath` is set so the menu-bar app doe
 spin up under test. Run from the command line:
 
 ```bash
-xcodebuild test -project Notchy.xcodeproj -scheme Notchy -destination 'platform=macOS'
+xcodebuild test -project Notchy.xcodeproj -scheme Notchy -destination 'platform=macOS' -skipPackagePluginValidation
 ```
 
 `.github/workflows/test.yml` runs the same on every push to `main` and every PR
