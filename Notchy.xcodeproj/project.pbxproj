@@ -511,7 +511,7 @@
 			repositoryURL = "https://github.com/bones7456/SwiftTerm.git";
 			requirement = {
 				kind = revision;
-				revision = cd4a17de914613bcc8a429bb216d4a9abee2e661;
+				revision = 55af45b952bb9047c7a13dd7e6b0b08972154321;
 			};
 		};
 		BD0000040000000000000004 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
