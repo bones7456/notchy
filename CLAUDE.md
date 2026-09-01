@@ -15,6 +15,22 @@ build-tool plugin (`SwiftTermBuildInfoPlugin`) that Xcode refuses to run until i
 trusted, and the trust prompt only exists in the GUI. In Xcode, approve it once via
 "Trust & Enable" instead.
 
+### Running a debug build while Notchy is installed
+
+`AppDelegate` quits on launch if another process with the same bundle identifier
+is already running — two copies both cover the notch and both track the cursor,
+so hovering activates whichever one wins the race. Pass
+`--allow-multiple-instances` to bypass it while developing:
+
+```bash
+open -a /path/to/Debug/Notchy.app --args --allow-multiple-instances
+```
+
+or add the argument to the scheme's Run action. Note the second instance still
+shares `~/.notchy/hook.sock` and the agent config files with the first, so
+expect them to interfere over status reporting even when both are allowed to
+run.
+
 ## Tests
 
 Unit tests live in the `NotchyTests` target (Swift Testing, `import Testing`). The

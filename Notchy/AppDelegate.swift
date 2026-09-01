@@ -24,11 +24,59 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let hoverMargin: CGFloat = 15
     private let hoverHideDelay: TimeInterval = 0.06
 
+    /// Launch argument that lifts the single-instance check.
+    ///
+    /// Only useful while developing: it lets a build from DerivedData run
+    /// alongside the copy in /Applications. Two instances really do fight over
+    /// the notch, so this is not something to hand to users — pass it in the
+    /// scheme's Arguments, or `open -a Notchy --args --allow-multiple-instances`.
+    static let allowMultipleInstancesFlag = "--allow-multiple-instances"
+
+    static var allowsMultipleInstances: Bool {
+        ProcessInfo.processInfo.arguments.contains(allowMultipleInstancesFlag)
+    }
+
+    /// Another copy of this same app already running, by bundle identifier.
+    ///
+    /// Keyed on the identifier rather than the path deliberately: the case that
+    /// actually happens is a debug build and an installed build, which live at
+    /// different paths but are the same app as far as the notch is concerned.
+    static func anotherInstanceIsRunning() -> Bool {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return false }
+        let mine = ProcessInfo.processInfo.processIdentifier
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .contains { $0.processIdentifier != mine }
+    }
+
+    private func presentAlreadyRunningAlert() {
+        // A menu-bar app is not frontmost, so the alert would otherwise open
+        // behind whatever the user is looking at.
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Notchy is already running"
+        alert.informativeText = "Only one copy can use the notch at a time. "
+            + "The one that's already running will keep going; this one will quit."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Running as the host for a unit-test bundle: skip all UI, global-hotkey,
         // and network setup so tests can `@testable import Notchy` without the
         // real menu-bar app spinning up (and failing headless in CI).
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
+
+        // Two copies both place a window over the notch and both track the
+        // cursor, so which one answers a hover is a coin toss. Bail out before
+        // anything with side effects — no status item, no notch window, and in
+        // particular no hook installation or socket, which the running copy
+        // already owns.
+        if !Self.allowsMultipleInstances, Self.anotherInstanceIsRunning() {
+            presentAlreadyRunningAlert()
+            NSApp.terminate(nil)
+            return
+        }
 
         setupStatusItem()
         setupPanel()
@@ -78,6 +126,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// `nc` that fails to connect — harmless, but not the "does nothing when
     /// Notchy isn't running" the scripts promise.
     func applicationWillTerminate(_ notification: Notification) {
+        // Only if this instance actually owns the socket. A second copy that
+        // quit on the single-instance check would otherwise unlink the socket
+        // the running copy is listening on, silently killing status reporting
+        // for the rest of its session.
+        guard HookBridge.shared.isRunning else { return }
         HookBridge.shared.stop()
     }
 

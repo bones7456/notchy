@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Notchy
@@ -208,6 +209,29 @@ struct HookBridgeTests {
         let current = try String(contentsOf: log, encoding: .utf8)
         #expect(current.contains("after rollover"))
         #expect(current.count < 200, "the new log kept the old contents")
+    }
+
+    @Test("The multiple-instance flag is only on when passed")
+    func multipleInstanceFlagDefaultsOff() {
+        // The test host isn't launched with it, so this also asserts the
+        // default: a normal launch enforces the single-instance check.
+        #expect(!AppDelegate.allowsMultipleInstances)
+        #expect(AppDelegate.allowMultipleInstancesFlag.hasPrefix("--"))
+    }
+
+    @Test("The instance check sees this app but doesn't count it as another")
+    func instanceCheckExcludesSelf() {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        let mine = ProcessInfo.processInfo.processIdentifier
+
+        // If the query can't even see this process, the check would never fire.
+        #expect(running.contains { $0.processIdentifier == mine },
+                "the bundle-identifier query doesn't match this process")
+        // Not asserted as false: a debug build may legitimately be running
+        // alongside the test host. What matters is that it counts everyone
+        // except us.
+        #expect(AppDelegate.anotherInstanceIsRunning() == (running.count > 1))
     }
 
     @Test("The socket path fits in sun_path")
