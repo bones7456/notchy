@@ -128,4 +128,70 @@ struct SettingsManagerTests {
         let s = SettingsManager(defaults: suite)
         #expect(s.preferredAgent == .claude)
     }
+
+    // MARK: - Agent status reporting
+
+    @Test("Both status-reporting switches are off on a fresh install")
+    func hookSwitchesDefaultOff() {
+        let (suite, cleanup) = makeSuite(); defer { cleanup() }
+        let s = SettingsManager(defaults: suite)
+        // These edit files the user owns; neither may turn itself on.
+        #expect(!s.claudeHooksEnabled)
+        #expect(!s.codexHooksEnabled)
+        #expect(!s.anyAgentHooksEnabled)
+    }
+
+    @Test("The two agents are switched independently")
+    func hookSwitchesAreIndependent() {
+        let (suite, cleanup) = makeSuite(); defer { cleanup() }
+        let s = SettingsManager(defaults: suite)
+        s.claudeHooksEnabled = true
+        #expect(s.claudeHooksEnabled)
+        #expect(!s.codexHooksEnabled)
+        #expect(s.anyAgentHooksEnabled)
+
+        let reloaded = SettingsManager(defaults: suite)
+        #expect(reloaded.claudeHooksEnabled)
+        #expect(!reloaded.codexHooksEnabled)
+    }
+
+    @Test("anyAgentHooksEnabled tracks either switch")
+    func anyTracksEitherSwitch() {
+        let (suite, cleanup) = makeSuite(); defer { cleanup() }
+        let s = SettingsManager(defaults: suite)
+        s.codexHooksEnabled = true
+        #expect(s.anyAgentHooksEnabled)
+        s.codexHooksEnabled = false
+        #expect(!s.anyAgentHooksEnabled)
+    }
+
+    @Test("An existing combined opt-in carries over to both switches")
+    func legacyCombinedSwitchMigrates() {
+        let (suite, cleanup) = makeSuite(); defer { cleanup() }
+        // Someone who opted in while this was one switch must not end up with
+        // hooks installed and both toggles reading "off".
+        suite.set(true, forKey: "agentHooksEnabled")
+        let s = SettingsManager(defaults: suite)
+        #expect(s.claudeHooksEnabled)
+        #expect(s.codexHooksEnabled)
+    }
+
+    @Test("Migration never turns anything on by itself")
+    func legacyOffStaysOff() {
+        let (suite, cleanup) = makeSuite(); defer { cleanup() }
+        suite.set(false, forKey: "agentHooksEnabled")
+        let s = SettingsManager(defaults: suite)
+        #expect(!s.claudeHooksEnabled)
+        #expect(!s.codexHooksEnabled)
+    }
+
+    @Test("An explicit choice is not overwritten by the legacy value")
+    func explicitChoiceBeatsLegacy() {
+        let (suite, cleanup) = makeSuite(); defer { cleanup() }
+        suite.set(true, forKey: "agentHooksEnabled")
+        suite.set(false, forKey: "claudeHooksEnabled")
+        let s = SettingsManager(defaults: suite)
+        #expect(!s.claudeHooksEnabled, "migration clobbered a deliberate opt-out")
+        #expect(s.codexHooksEnabled)
+    }
 }

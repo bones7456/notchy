@@ -477,8 +477,24 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         let timer = Timer(timeInterval: 0.3, repeats: true) { [weak self] _ in
             guard let self, let id = self.sessionId else { return }
             guard self.hasNewData else { return }
+            if SessionStore.shared.hookIsAuthoritative(for: id) {
+                // Only a fresh working signal may break the window. Codex has no
+                // "started" hook, so a turn begun right after a completion would
+                // otherwise go unnoticed for the whole window.
+                //
+                // The flag is *not* cleared for anything else, so that output is
+                // re-examined once the window expires. Consuming it here would
+                // discard the only notice that anything changed: pressing Esc
+                // raises no hook event, so "Interrupted" printed inside the
+                // window would be lost and the session would stay .working
+                // forever — holding the sleep assertion with it.
+                if self.evaluateStatus(for: id, onlyWorking: true) {
+                    self.hasNewData = false
+                }
+                return
+            }
             self.hasNewData = false
-            self.evaluateStatus(for: id)
+            _ = self.evaluateStatus(for: id)
         }
         RunLoop.main.add(timer, forMode: .common)
         statusTimer = timer
@@ -728,14 +744,21 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         !canScroll || scrollPosition >= 1
     }
 
-    private func evaluateStatus(for id: UUID) {
-        guard let visibleText = extractVisibleText() else { return }
+    /// Returns whether a status was applied.
+    ///
+    /// - Parameter onlyWorking: apply the classification only if it reads as
+    ///   `.working`, used while a hook signal still holds authority.
+    @discardableResult
+    private func evaluateStatus(for id: UUID, onlyWorking: Bool = false) -> Bool {
+        guard let visibleText = extractVisibleText() else { return false }
         let fullText = extractFullVisibleText() ?? visibleText
         let newStatus = TerminalStatusClassifier.classify(visible: visibleText, full: fullText)
+        if onlyWorking, newStatus != .working { return false }
 
         if !SessionStore.shared.sessions.contains(where: {$0.id == id && $0.terminalStatus == newStatus}) {
             SessionStore.shared.updateTerminalStatus(id, status: newStatus)
         }
+        return true
     }
 
     // MARK: - IME preedit (marked text)
@@ -1085,7 +1108,7 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         terminal.changeScrollback(SettingsManager.shared.terminalBufferSize)
 
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        let environment = buildEnvironment()
+        let environment = buildEnvironment(sessionId: sessionId)
 
         terminal.startProcess(
             executable: shell,
@@ -1206,12 +1229,19 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         }
     }
 
-    private func buildEnvironment() -> [String] {
+    /// Built once per session, immediately before `startProcess`. There is no
+    /// second chance: once the login shell is running its environment is fixed,
+    /// so `NOTCHY_SESSION_ID` has to be stamped in here. Everything the tab
+    /// later spawns inherits it — the auto-launched agent, a `claude` the user
+    /// types by hand, `claude --resume`, even one started inside tmux — which
+    /// is what lets `HookBridge` attribute a global hook event back to this tab.
+    private func buildEnvironment(sessionId: UUID) -> [String] {
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         env["TERM_PROGRAM"] = "Notchy.app"
         env["TERM_PROGRAM_VERSION"] = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
+        env["NOTCHY_SESSION_ID"] = sessionId.uuidString
         return env.map { "\($0.key)=\($0.value)" }
     }
 

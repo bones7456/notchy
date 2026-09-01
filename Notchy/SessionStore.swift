@@ -491,6 +491,94 @@ class SessionStore {
         persistSessions()
     }
 
+    /// When each session last received a hook event. Used to hold off the
+    /// buffer classifier while a known-correct signal is in effect.
+    private var lastHookSignal: [UUID: Date] = [:]
+
+    /// Identifies the turn a delayed completion belongs to.
+    ///
+    /// The auto-clear that returns `.taskCompleted` to `.idle` runs three
+    /// seconds later, by which time the next turn may already be under way —
+    /// clearing then would wipe the new turn's status. Each scheduled clear
+    /// captures the token current when it was scheduled and does nothing if a
+    /// newer turn has replaced it.
+    private var completionTokens: [UUID: UUID] = [:]
+
+    /// Marks a new turn, invalidating any pending completion clear.
+    private func beginTurn(_ id: UUID) {
+        completionTokens[id] = UUID()
+    }
+
+    /// Schedules the return to idle, keyed to the turn in progress.
+    private func scheduleCompletionClear(for id: UUID) {
+        let token = UUID()
+        completionTokens[id] = token
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard self.completionTokens[id] == token,
+                  let index = self.sessions.firstIndex(where: { $0.id == id }),
+                  self.sessions[index].terminalStatus == .taskCompleted else { return }
+            self.sessions[index].terminalStatus = .idle
+            self.sessions[index].workingStartedAt = nil
+            NotificationCenter.default.post(name: .NotchyNotchStatusChanged, object: nil)
+        }
+    }
+
+    /// True while a hook event should win over screen-scraped status.
+    ///
+    /// Without this the 300ms status timer would re-classify the buffer and
+    /// immediately undo the hook's verdict — Claude's idle footer is on screen
+    /// the moment `Stop` fires, so `taskCompleted` would be overwritten with
+    /// `.idle` before it ever rendered.
+    func hookIsAuthoritative(for id: UUID) -> Bool {
+        guard let last = lastHookSignal[id] else { return false }
+        return Date().timeIntervalSince(last) < HookBridge.authorityWindow
+    }
+
+    /// Apply a status reported by an agent CLI hook rather than by buffer text.
+    func applyHookStatus(_ id: UUID, status: TerminalStatus) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        lastHookSignal[id] = Date()
+
+        // Match the buffer path's rule that a turn shorter than 10s finishes
+        // quietly. The hook knows the turn really ended, but a chime and a
+        // notch flash after a one-line answer reads as noise — and enabling
+        // this feature shouldn't change when the sound plays.
+        //
+        // A nil start time means we never saw this session working, so there is
+        // no evidence it ran long enough to be worth announcing.
+        if status == .taskCompleted {
+            let elapsed = sessions[index].workingStartedAt.map { Date().timeIntervalSince($0) }
+            if (elapsed ?? 0) < 10 {
+                // Set directly rather than going through updateTerminalStatus:
+                // its working→idle branch starts the 3-second confirmation
+                // timer, which would re-check the elapsed time *after* the
+                // delay. A Stop at 8s would pass 10s by then and chime anyway —
+                // exactly what this guard exists to prevent.
+                if sessions[index].terminalStatus != .idle {
+                    sessions[index].terminalStatus = .idle
+                    updateSleepPrevention()
+                    NotificationCenter.default.post(name: .NotchyNotchStatusChanged, object: nil)
+                }
+                // The turn is over; don't let its start time date the next one,
+                // which for Codex has no "started" hook to reset it.
+                sessions[index].workingStartedAt = nil
+                completionTokens[id] = UUID()
+                return
+            }
+        }
+
+        if status == .working { beginTurn(id) }
+        updateTerminalStatus(id, status: status)
+
+        // `updateTerminalStatus` only schedules the auto-clear on the
+        // buffer-driven working→idle path, so a hook-driven completion has to
+        // arrange its own return to idle.
+        if status == .taskCompleted {
+            scheduleCompletionClear(for: id)
+        }
+    }
+
     func updateTerminalStatus(_ id: UUID, status: TerminalStatus) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         if sessions[index].terminalStatus != status {
@@ -500,6 +588,9 @@ class SessionStore {
 
             if status == .working && previous != .working {
                 sessions[index].workingStartedAt = Date()
+                // A new turn invalidates any completion clear still pending
+                // from the previous one.
+                completionTokens[id] = UUID()
             }
             if status == .waitingForInput && previous != .waitingForInput {
                 playSound(named: "waitingForInput")
@@ -515,9 +606,14 @@ class SessionStore {
                 // Delay 3s before treating as "task completed" — Claude sometimes
                 // goes working → idle → working again briefly.
                 let workingStartedAt = sessions[index].workingStartedAt
+                // Captured so a turn that starts during the wait cancels this
+                // one instead of having its status overwritten.
+                let token = UUID()
+                completionTokens[id] = token
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(3))
-                    guard let idx = self.sessions.firstIndex(where: { $0.id == id }),
+                    guard self.completionTokens[id] == token,
+                          let idx = self.sessions.firstIndex(where: { $0.id == id }),
                           self.sessions[idx].terminalStatus == .idle else { return }
                     // Only trigger taskCompleted for tasks that ran >10s
                     if let started = workingStartedAt, Date().timeIntervalSince(started) < 10 {
@@ -526,9 +622,11 @@ class SessionStore {
                     self.updateTerminalStatus(id, status: .taskCompleted)
                     // Auto-clear taskCompleted after 3 seconds
                     try? await Task.sleep(for: .seconds(3))
-                    guard let idx2 = self.sessions.firstIndex(where: { $0.id == id }),
+                    guard self.completionTokens[id] == token,
+                          let idx2 = self.sessions.firstIndex(where: { $0.id == id }),
                           self.sessions[idx2].terminalStatus == .taskCompleted else { return }
                     self.sessions[idx2].terminalStatus = .idle
+                    self.sessions[idx2].workingStartedAt = nil
                     NotificationCenter.default.post(name: .NotchyNotchStatusChanged, object: nil)
                 }
             }

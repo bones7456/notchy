@@ -107,6 +107,7 @@ struct GeneralTab: View {
             hasExternalDisplay = !NSScreen.externalScreens.isEmpty
         }
     }
+
 }
 
 struct TerminalTab: View {
@@ -421,6 +422,9 @@ struct FontPickerRow: View {
 
 struct IntegrationsTab: View {
     @Bindable private var settings = SettingsManager.shared
+    @State private var hookError: String?
+    @State private var claudeAvailable = ClaudeHookInstaller.isAgentAvailable
+    @State private var codexAvailable = CodexNotifyInstaller.isAgentAvailable
 
     var body: some View {
         Form {
@@ -488,9 +492,154 @@ struct IntegrationsTab: View {
                     .pickerStyle(.menu)
                 }
             }
+
+            Section {
+                Toggle(isOn: hookBinding(
+                    value: { settings.claudeHooksEnabled },
+                    store: { settings.claudeHooksEnabled = $0 },
+                    install: ClaudeHookInstaller.install,
+                    uninstall: ClaudeHookInstaller.uninstall)
+                ) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Claude")
+                            Text(claudeAvailable
+                                 ? "Hooks in ~/.claude/settings.json — working, waiting for approval, done"
+                                 : "Claude Code hasn't run on this Mac yet")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(.orange)
+                    }
+                }
+                // Unavailability blocks turning it *on*, never off: a switch
+                // left on after the agent was removed still has config to clean
+                // up, and greying it out would strand that with no way back.
+                .disabled(!claudeAvailable && !settings.claudeHooksEnabled)
+
+                Toggle(isOn: hookBinding(
+                    value: { settings.codexHooksEnabled },
+                    store: { settings.codexHooksEnabled = $0 },
+                    install: CodexNotifyInstaller.install,
+                    uninstall: CodexNotifyInstaller.uninstall)
+                ) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Codex")
+                            Text(codexAvailable
+                                 ? "notify in ~/.codex/config.toml — turn completion only"
+                                 : "Codex hasn't run on this Mac yet")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "chevron.left.forwardslash.chevron.right")
+                            .foregroundStyle(.green)
+                    }
+                }
+                .disabled(!codexAvailable && !settings.codexHooksEnabled)
+
+                if let hookError {
+                    Text(hookError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Text("Status detection")
+            } footer: {
+                Text("Lets the agents report their own state instead of Notchy reading "
+                     + "terminal output. Your existing hooks and notify program keep running. "
+                     + "Codex reports completion only — its working and waiting states still "
+                     + "come from the terminal.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .onAppear {
+            // Re-checked on every appearance: someone may have run an agent for
+            // the first time since Notchy launched, and a permanently greyed-out
+            // switch until relaunch is hard to explain.
+            claudeAvailable = ClaudeHookInstaller.isAgentAvailable
+            codexAvailable = CodexNotifyInstaller.isAgentAvailable
+            hookError = degradedDescription()
+        }
+    }
+
+    /// Describes a switch that says "on" while the machinery behind it isn't
+    /// actually working — a startup repair that failed, or a socket that never
+    /// opened. Without this the failure is invisible: the setting persists, the
+    /// UI looks fine, and no status ever arrives.
+    private func degradedDescription() -> String? {
+        var problems: [String] = []
+        // Not gated on availability: an agent removed after the switch was
+        // turned on is exactly the case worth reporting.
+        if settings.claudeHooksEnabled, !ClaudeHookInstaller.isInstalled {
+            problems.append(claudeAvailable
+                            ? "the hook is missing from ~/.claude/settings.json"
+                            : "Claude Code is no longer installed")
+        }
+        if settings.codexHooksEnabled, !CodexNotifyInstaller.isInstalled {
+            problems.append(codexAvailable
+                            ? "notify isn't pointing at Notchy in ~/.codex/config.toml"
+                            : "Codex is no longer installed")
+        }
+        if settings.anyAgentHooksEnabled, !HookBridge.shared.isRunning {
+            problems.append("the status socket isn't running")
+        }
+        guard !problems.isEmpty else { return nil }
+        return "Status reporting is on, but " + problems.joined(separator: ", ")
+             + ". Switch it off to clear it, or off and on again to retry."
+    }
+
+    /// A toggle binding that only records the new value once the config file
+    /// has actually been written.
+    ///
+    /// Deliberately not `.onChange` plus a revert: writing the setting back
+    /// from inside its own change handler re-enters the handler, which runs the
+    /// opposite operation and clears the error the user was meant to read — and
+    /// if both directions fail, oscillates. Here a failed write simply never
+    /// updates the stored value, so the switch springs back on its own and the
+    /// message stays put.
+    private func hookBinding(
+        value: @escaping () -> Bool,
+        store: @escaping (Bool) -> Void,
+        install: @escaping () throws -> Void,
+        uninstall: @escaping () throws -> Void
+    ) -> Binding<Bool> {
+        Binding(
+            get: value,
+            set: { newValue in
+                do {
+                    if newValue {
+                        try install()
+                        // Start before recording the change: if there's no
+                        // listener, the setting and the config file would both
+                        // claim this is on while nothing receives anything.
+                        do {
+                            try HookBridge.shared.start()
+                        } catch {
+                            try? uninstall()
+                            throw error
+                        }
+                        store(true)
+                    } else {
+                        try uninstall()
+                        store(false)
+                        // The socket is shared: stop it only once nothing needs it.
+                        if !settings.anyAgentHooksEnabled {
+                            HookBridge.shared.stop()
+                        }
+                    }
+                    hookError = nil
+                } catch {
+                    hookError = error.localizedDescription
+                }
+            }
+        )
     }
 }
 

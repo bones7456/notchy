@@ -40,10 +40,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             setupExternalDisplayWindows()
         }
         observeScreenChanges()
+        // Re-install anything that went missing — the user may have edited the
+        // config by hand, or synced it from a machine where Notchy was never
+        // installed. Each agent is checked on its own; the shared socket starts
+        // if either one is reporting.
+        // Failures are recorded rather than swallowed: the switch stays on and
+        // Settings keeps claiming the feature is active, so a silent failure
+        // here is invisible. Settings re-checks on appearance and surfaces
+        // anything still broken.
+        if settings.claudeHooksEnabled,
+           ClaudeHookInstaller.isAgentAvailable,
+           !ClaudeHookInstaller.isInstalled {
+            do { try ClaudeHookInstaller.install() } catch {
+                HookBridge.log("startup repair failed for Claude: \(error.localizedDescription)")
+            }
+        }
+        if settings.codexHooksEnabled,
+           CodexNotifyInstaller.isAgentAvailable,
+           !CodexNotifyInstaller.isInstalled {
+            do { try CodexNotifyInstaller.install() } catch {
+                HookBridge.log("startup repair failed for Codex: \(error.localizedDescription)")
+            }
+        }
+        if settings.anyAgentHooksEnabled {
+            do { try HookBridge.shared.start() } catch {
+                HookBridge.log("hook socket failed to start: \(error.localizedDescription)")
+            }
+        }
         // Detect in background so launch isn't blocked
         sessionStore.detectAllXcodeProjectsAsync()
         // Boot Sparkle so the scheduled background check runs
         _ = UpdaterController.shared
+    }
+
+    /// Remove the socket on the way out. Left behind, the hook scripts' own
+    /// `[ -S "$SOCKET" ]` guard still passes and every agent turn spawns an
+    /// `nc` that fails to connect — harmless, but not the "does nothing when
+    /// Notchy isn't running" the scripts promise.
+    func applicationWillTerminate(_ notification: Notification) {
+        HookBridge.shared.stop()
     }
 
     private func setupStatusItem() {

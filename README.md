@@ -27,6 +27,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **Quick input** — bind your own keyboard shortcuts to canned commands (ships with ⌘G → `git status`); press one while a terminal tab is focused to type the command, optionally pressing Return for you. Add, edit, or remove bindings — or switch the whole feature off — in Settings → Quick Input
 - **Adjustable scrollback** — set the terminal history buffer in Settings → General → Terminal (default 1,000 lines, up to 50,000)
 - **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
+- **Agent-reported status** — opt in via Settings → Integrations → Status detection to have the agents report their own state instead of Notchy inferring it from terminal output; see [Status detection](#status-detection) below
 - **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes
 
 ### Tab kinds
@@ -53,6 +54,36 @@ Typical uses:
 - Use git to review or roll back the agent's edits
 
 Create one from the tab context menu (**right-click an Xcode or pinned tab → Shadow Tab**) or with <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>. Shadow tabs are ephemeral `+` tabs — they're dropped on restart unless you pin them.
+
+### Status detection
+
+By default Notchy works out what an agent is doing by reading its terminal output — matching
+the spinner, the token counter, `esc to interrupt`, and similar on-screen chrome. That works
+with any CLI and needs no setup, but it depends on strings the agents can change between
+releases, and completion is only confirmed after a short delay.
+
+**Settings → Integrations → Status detection** switches to having the agents report their own state.
+There is a separate switch per agent — they edit different files and offer different coverage,
+so you can enable one without the other. A switch is greyed out when that agent hasn't run on
+this Mac yet. Both are off by default, because turning one on edits a file you own:
+
+- **Claude Code** — appends hooks to `~/.claude/settings.json` for `UserPromptSubmit`,
+  `PermissionRequest`, `Notification`, and `Stop`, which between them cover working, waiting
+  for approval, and done. Hook entries from all settings layers are concatenated rather than
+  overridden, so every hook you already have keeps running.
+- **Codex** — points the top-level `notify` in `~/.codex/config.toml` at a small shim in
+  `~/.notchy/`. Because `notify` holds a single command, the shim re-runs whatever program was
+  configured before with the original arguments, and switching the setting off puts your
+  original value back. (Codex's own hook system is reachable only through installed plugins and
+  requires interactive trust, so `notify` is used instead — it reports turn completion only,
+  and Codex's working state still comes from the terminal output.)
+
+Only sessions Notchy started report anything: each tab's shell gets a `NOTCHY_SESSION_ID`, and
+the hooks exit silently without it, so a `claude` you run in iTerm or over SSH is unaffected. A
+machine that syncs these config files but has no Notchy installed does nothing at all.
+
+Both files are backed up before the first edit, and everything is reversible from the same
+switches.
 
 ### Terminal right-click menu
 

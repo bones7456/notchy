@@ -48,6 +48,27 @@ class SettingsManager {
         didSet { defaults.set(codexIntegrationEnabled, forKey: "codexIntegrationEnabled") }
     }
 
+    /// Let Claude Code report its own status instead of Notchy parsing terminal
+    /// output. Writes hooks into `~/.claude/settings.json`.
+    ///
+    /// Separate from `codexHooksEnabled` because the two edit different files,
+    /// offer different coverage, and a user may well want one and not the
+    /// other. Both off by default: modifying a file the user owns should never
+    /// be a silent side effect of installing the app.
+    var claudeHooksEnabled: Bool {
+        didSet { defaults.set(claudeHooksEnabled, forKey: "claudeHooksEnabled") }
+    }
+
+    /// Let Codex report turn completion, via the `notify` program in
+    /// `~/.codex/config.toml`.
+    var codexHooksEnabled: Bool {
+        didSet { defaults.set(codexHooksEnabled, forKey: "codexHooksEnabled") }
+    }
+
+    /// True when either agent is reporting — the socket is shared, so
+    /// `HookBridge` runs if anything at all needs it.
+    var anyAgentHooksEnabled: Bool { claudeHooksEnabled || codexHooksEnabled }
+
     /// Tiebreaker used when both CLAUDE.md and AGENTS.md exist (and both
     /// integrations are enabled). Only `.claude` and `.codex` are meaningful;
     /// `.none` is treated as Claude.
@@ -141,6 +162,16 @@ class SettingsManager {
         if defaults.object(forKey: "terminalLigaturesEnabled") == nil { defaults.set(true, forKey: "terminalLigaturesEnabled") }
         if defaults.object(forKey: "perTabInputSourceEnabled") == nil { defaults.set(true, forKey: "perTabInputSourceEnabled") }
         if defaults.object(forKey: "quickInputEnabled") == nil { defaults.set(true, forKey: "quickInputEnabled") }
+        // Carried over from the single combined switch this shipped as during
+        // development, so an existing opt-in isn't silently dropped — which
+        // would leave installed hooks with both toggles reading "off".
+        let legacyHooks = defaults.bool(forKey: "agentHooksEnabled")
+        if defaults.object(forKey: "claudeHooksEnabled") == nil {
+            defaults.set(legacyHooks, forKey: "claudeHooksEnabled")
+        }
+        if defaults.object(forKey: "codexHooksEnabled") == nil {
+            defaults.set(legacyHooks, forKey: "codexHooksEnabled")
+        }
 
         showNotch = defaults.bool(forKey: "replaceNotch")
         soundsEnabled = defaults.bool(forKey: "soundsEnabled")
@@ -159,6 +190,8 @@ class SettingsManager {
         terminalLigaturesEnabled = defaults.bool(forKey: "terminalLigaturesEnabled")
         perTabInputSourceEnabled = defaults.bool(forKey: "perTabInputSourceEnabled")
         quickInputEnabled = defaults.bool(forKey: "quickInputEnabled")
+        claudeHooksEnabled = defaults.bool(forKey: "claudeHooksEnabled")
+        codexHooksEnabled = defaults.bool(forKey: "codexHooksEnabled")
         if let data = defaults.data(forKey: "quickInputPairs"),
            let decoded = try? JSONDecoder().decode([QuickInputPair].self, from: data) {
             quickInputPairs = decoded
