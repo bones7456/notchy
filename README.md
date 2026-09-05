@@ -69,8 +69,10 @@ this Mac yet. Both are off by default, because turning one on edits a file you o
 
 - **Claude Code** — appends hooks to `~/.claude/settings.json` for `UserPromptSubmit`,
   `PermissionRequest`, `Notification`, and `Stop`, which between them cover working, waiting
-  for approval, and done. Hook entries from all settings layers are concatenated rather than
-  overridden, so every hook you already have keeps running.
+  for approval, and done. When a turn ends by handing work to a background subagent, that
+  isn't reported as done — the tab is still busy, and Notchy goes back to reading the terminal
+  until the work really finishes. Hook entries from all settings layers are concatenated rather
+  than overridden, so every hook you already have keeps running.
 - **Codex** — points the top-level `notify` in `~/.codex/config.toml` at a small shim in
   `~/.notchy/`. Because `notify` holds a single command, the shim re-runs whatever program was
   configured before with the original arguments, and switching the setting off puts your

@@ -535,6 +535,16 @@ class SessionStore {
         return Date().timeIntervalSince(last) < HookBridge.authorityWindow
     }
 
+    /// Hand judgement back to the buffer classifier without touching status.
+    ///
+    /// For a hook event that is real but not actionable — a `Stop` raised while
+    /// a subagent keeps working. Leaving the window standing would suppress the
+    /// classifier for `HookBridge.authorityWindow` seconds precisely when it
+    /// becomes the only thing still watching the session.
+    func relinquishHookAuthority(_ id: UUID) {
+        lastHookSignal.removeValue(forKey: id)
+    }
+
     /// Apply a status reported by an agent CLI hook rather than by buffer text.
     func applyHookStatus(_ id: UUID, status: TerminalStatus) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }

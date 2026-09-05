@@ -29,6 +29,26 @@ struct HookBridgeTests {
         #expect(HookBridge.status(for: "Stop") == .taskCompleted)
     }
 
+    @Test("A Stop with a subagent still running is not completion")
+    func stopWithRunningSubagentIsNotCompletion() {
+        // Dispatching a background subagent ends the main agent's turn and
+        // raises Stop while the tab keeps working. Reporting completion here is
+        // the chime-too-early bug; nil hands the call back to the classifier.
+        #expect(HookBridge.status(for: "Stop", busy: true) == nil)
+    }
+
+    @Test("Only Stop is suppressed by a running subagent")
+    func busyDoesNotSuppressOtherEvents() {
+        // A subagent may well be running when a permission prompt appears —
+        // that prompt is exactly what the user needs to see.
+        #expect(HookBridge.status(for: "UserPromptSubmit", busy: true) == .working)
+        #expect(HookBridge.status(for: "PermissionRequest", busy: true) == .waitingForInput)
+        #expect(HookBridge.status(for: "Notification", type: "permission_prompt",
+                                  busy: true) == .waitingForInput)
+        #expect(HookBridge.status(for: CodexNotifyInstaller.eventName, busy: true)
+                == .taskCompleted)
+    }
+
     @Test("Codex reports completion through its notify shim")
     func codexTurnCompletes() {
         #expect(HookBridge.status(for: CodexNotifyInstaller.eventName) == .taskCompleted)
@@ -93,6 +113,25 @@ struct HookBridgeTests {
         store.sessions.append(session)
         defer { store.sessions.removeAll { $0.id == session.id } }
         body(store, session.id)
+    }
+
+    @Test("Deferring to the classifier also gives up the authority window")
+    func relinquishingAuthorityUnmutesTheClassifier() {
+        // The window exists so an on-screen footer can't overwrite a signal we
+        // know is right. A Stop we've decided not to act on is the opposite
+        // case: the classifier is now the only thing watching, and must not be
+        // held off for another four seconds.
+        Self.withTemporarySession { store, id in
+            store.applyHookStatus(id, status: .working)
+            #expect(store.hookIsAuthoritative(for: id))
+
+            store.relinquishHookAuthority(id)
+            #expect(!store.hookIsAuthoritative(for: id),
+                    "the classifier is still suppressed after the hook stood down")
+            // Status is the classifier's call now — standing down must not
+            // have quietly parked the session somewhere itself.
+            #expect(store.sessions.first { $0.id == id }?.terminalStatus == .working)
+        }
     }
 
     @Test("A short turn finishes quietly, like the buffer path")
@@ -378,6 +417,121 @@ struct HookScriptTests {
             #expect(received.contains("\"event\":\"Stop\""))
             #expect(received.contains("\"session\":\"SESSION-A\""))
             #expect(received.contains("\"type\":\"\""))
+        }
+    }
+
+    // MARK: - Background subagents
+
+    /// Captured verbatim from a live turn that dispatched a background
+    /// subagent: this is the Stop that used to chime while the work went on.
+    static let stopWithRunningSubagent = """
+        {"session_id":"3a9857ce-a55e-4ee7-9ba8-d6277818eb98",\
+        "cwd":"/Users/someone/dev/notchy","hook_event_name":"Stop",\
+        "stop_hook_active":false,\
+        "last_assistant_message":"Subagent launched; it is running in the background.",\
+        "background_tasks":[{"id":"ab4e734b6b1edffdb","type":"subagent",\
+        "status":"running","description":"long-running command",\
+        "agent_type":"general-purpose"}],"session_crons":[]}
+        """
+
+    /// The *second* Stop from that same turn — the real completion. Note
+    /// background_tasks is non-empty here too: a `sleep 25` the tab kicked off
+    /// is still going. Anything keying on emptiness reads this as busy.
+    static let stopWithRunningShellOnly = """
+        {"session_id":"3a9857ce-a55e-4ee7-9ba8-d6277818eb98",\
+        "cwd":"/Users/someone/dev/notchy","hook_event_name":"Stop",\
+        "stop_hook_active":false,"last_assistant_message":"The subagent finished.",\
+        "background_tasks":[{"id":"bvjjsj0fp","type":"shell","status":"running",\
+        "description":"Run sleep for 25 seconds","command":"sleep 25"}],\
+        "session_crons":[]}
+        """
+
+    static func busyFlag(in received: String) -> String? {
+        guard let range = received.range(of: "\"busy\":") else { return nil }
+        return String(received[range.upperBound...].prefix { $0.isNumber })
+    }
+
+    @Test("A Stop with a subagent still running reports busy")
+    func reportsBusyWhileSubagentRuns() throws {
+        guard FileManager.default.fileExists(atPath: Self.nc) else { return }
+        try Self.withHome { home, script in
+            let received = try Self.capture(home: home) {
+                try Self.run(script, home: home, event: "Stop",
+                             sessionId: "SESSION-E", stdin: Self.stopWithRunningSubagent)
+            }
+            #expect(Self.busyFlag(in: received) == "1",
+                    "the running subagent went unnoticed — got: \(received)")
+        }
+    }
+
+    @Test("A background shell command is not a subagent")
+    func backgroundShellIsNotBusy() throws {
+        guard FileManager.default.fileExists(atPath: Self.nc) else { return }
+        try Self.withHome { home, script in
+            // The regression this guards: keying on background_tasks being
+            // non-empty would make a tab running a dev server or a watcher
+            // never report completion again.
+            let received = try Self.capture(home: home) {
+                try Self.run(script, home: home, event: "Stop",
+                             sessionId: "SESSION-F", stdin: Self.stopWithRunningShellOnly)
+            }
+            #expect(Self.busyFlag(in: received) == "0",
+                    "a background shell was mistaken for a subagent — got: \(received)")
+        }
+    }
+
+    @Test("A finished subagent doesn't hold the turn open")
+    func completedSubagentIsNotBusy() throws {
+        guard FileManager.default.fileExists(atPath: Self.nc) else { return }
+        try Self.withHome { home, script in
+            let payload = #"""
+            {"hook_event_name":"Stop","background_tasks":[{"id":"a",\#
+            "type":"subagent","status":"completed"}]}
+            """#
+            let received = try Self.capture(home: home) {
+                try Self.run(script, home: home, event: "Stop",
+                             sessionId: "SESSION-G", stdin: payload)
+            }
+            #expect(Self.busyFlag(in: received) == "0", "got: \(received)")
+        }
+    }
+
+    @Test("Unreadable Stop payloads fall back to reporting completion")
+    func malformedStopPayloadIsNotBusy() throws {
+        guard FileManager.default.fileExists(atPath: Self.nc) else { return }
+        // Every way the busy check can fail must land on 0 — the behaviour
+        // from before it existed — rather than stranding a tab that never
+        // reports completion again.
+        let payloads: [(String, String)] = [
+            ("empty stdin", ""),
+            ("not JSON", "garbage"),
+            ("truncated", #"{"background_tasks":[{"type":"suba"#),
+            ("no such key", #"{"hook_event_name":"Stop"}"#),
+            ("empty list", #"{"background_tasks":[]}"#),
+        ]
+        for (label, payload) in payloads {
+            try Self.withHome { home, script in
+                let received = try Self.capture(home: home) {
+                    try Self.run(script, home: home, event: "Stop",
+                                 sessionId: "SESSION-H", stdin: payload)
+                }
+                #expect(Self.busyFlag(in: received) == "0",
+                        "\(label) should not read as busy — got: \(received)")
+            }
+        }
+    }
+
+    @Test("Events other than Stop still report not-busy")
+    func nonStopEventsReportZero() throws {
+        guard FileManager.default.fileExists(atPath: Self.nc) else { return }
+        try Self.withHome { home, script in
+            // Only Stop reads stdin for this; the rest must stay off that path
+            // and still emit a well-formed message.
+            let received = try Self.capture(home: home) {
+                try Self.run(script, home: home, event: "UserPromptSubmit",
+                             sessionId: "SESSION-I", stdin: Self.stopWithRunningSubagent)
+            }
+            #expect(Self.busyFlag(in: received) == "0", "got: \(received)")
         }
     }
 

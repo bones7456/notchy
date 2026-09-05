@@ -222,8 +222,23 @@ final class HookBridge {
         // Empty string rather than absent when the shell script had nothing to
         // extract, so normalize it away.
         let type = (payload["type"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        // Absent from scripts written before this field existed, and from every
+        // event but Stop. Defaulting to false keeps those on the old behaviour.
+        let busy = (payload["busy"] as? Int).map { $0 != 0 } ?? false
 
-        guard let status = Self.status(for: event, type: type) else { return }
+        guard let status = Self.status(for: event, type: type, busy: busy) else {
+            // `Stop` is the one suppression that needs a side effect. The hook
+            // told us something true — the main agent's turn ended — but not
+            // something to act on, and leaving the authority window standing on
+            // the strength of it would mute the classifier for four seconds at
+            // exactly the moment it becomes the only thing still watching.
+            if event == "Stop" {
+                SessionStore.shared.relinquishHookAuthority(sessionId)
+                Self.log("Stop(subagent still running) → deferred to the classifier"
+                         + " | session \(rawSession)")
+            }
+            return
+        }
         SessionStore.shared.applyHookStatus(sessionId, status: status)
 
         let applied = SessionStore.shared.sessions
@@ -245,7 +260,8 @@ final class HookBridge {
     ///   permission request. It also covers idle reminders, so only
     ///   `permission_prompt` counts — see `status(for:type:)`.
     /// - `Stop` marks completion without the 3-second idle confirmation that
-    ///   guards against working→idle flicker.
+    ///   guards against working→idle flicker — unless `busy` says a subagent is
+    ///   still running, in which case the turn ended but the work did not.
     ///
     /// `PreToolUse`/`PostToolUse` are deliberately not subscribed: they would
     /// fire twice per tool call to tell us "still working", which the spinner
@@ -255,7 +271,8 @@ final class HookBridge {
     /// single `agent-turn-complete` event and nothing else), so it gets
     /// completion detection while its working and waiting states stay with the
     /// classifier.
-    static func status(for event: String, type: String? = nil) -> TerminalStatus? {
+    static func status(for event: String, type: String? = nil,
+                       busy: Bool = false) -> TerminalStatus? {
         switch event {
         case "UserPromptSubmit": return .working
         case "PermissionRequest": return .waitingForInput
@@ -263,7 +280,18 @@ final class HookBridge {
             // notification_type is also raised for idle reminders ("waiting for
             // your input" after 60s), which must not read as a prompt.
             return type == "permission_prompt" ? .waitingForInput : nil
-        case "Stop": return .taskCompleted
+        case "Stop":
+            // Handing work to a background subagent ends the main agent's turn
+            // and raises Stop while the tab is still busy — and the subagent
+            // finishing raises a *second* Stop under a new prompt_id, with no
+            // UserPromptSubmit between them, so the pair can't be told apart by
+            // counting. Reporting completion here is the chime-too-early bug.
+            //
+            // Nil rather than `.working`: the classifier is the better judge of
+            // what a handed-off turn is doing, and it will report completion on
+            // its own, 3 seconds later and more conservatively. Every way this
+            // signal can fail to arrive degrades to that same path.
+            return busy ? nil : .taskCompleted
         case CodexNotifyInstaller.eventName: return .taskCompleted
         default: return nil
         }
@@ -305,18 +333,44 @@ final class HookBridge {
         SOCKET="$HOME/.notchy/hook.sock"
         [ -S "$SOCKET" ] || exit 0
 
-        # Notification covers both "needs your approval" and idle reminders, and
-        # only notification_type tells them apart — so that one event is worth
-        # reading stdin for. The others aren't: skipping the read keeps the hook
-        # off the critical path of every turn.
+        # Two events are worth reading stdin for; the rest skip it to stay off
+        # the critical path of every turn. Both reads are exclusive — one event
+        # arrives per invocation — so neither has to share the pipe.
         TYPE=""
-        if [ "$1" = "Notification" ]; then
+        BUSY=0
+        case "$1" in
+        Notification)
+            # Notification covers both "needs your approval" and idle
+            # reminders, and only notification_type tells them apart.
             TYPE=$(cat | tr -d '\\n' \\
                 | sed -n 's/.*"notification_type"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p')
-        fi
+            ;;
+        Stop)
+            # Stop fires when the *main agent's* turn ends, which is not the
+            # same as the work being over: dispatching a background subagent
+            # ends the turn while the tab is still busy. The payload says so —
+            # background_tasks lists the subagent as still running — so reduce
+            # that to one bit here rather than shipping the whole payload.
+            #
+            # Filtered by type, not merely by the list being non-empty: a tab
+            # running a background shell command (a dev server, a watcher)
+            # carries an entry too, and treating that as busy would mean such a
+            # tab never reported completion again.
+            BUSY=$(/usr/bin/plutil -extract background_tasks json -o - -- - 2>/dev/null \\
+                | tr '{' '\\n' \\
+                | grep '"type"[[:space:]]*:[[:space:]]*"subagent"' \\
+                | grep -c '"status"[[:space:]]*:[[:space:]]*"running"')
+            # Every failure — no plutil, unparseable stdin, no such key —
+            # lands on 0, i.e. the behaviour from before this bit existed.
+            case "${BUSY:-0}" in
+                ''|*[!0-9]*|0) BUSY=0 ;;
+                *) BUSY=1 ;;
+            esac
+            ;;
+        esac
 
-        printf '{"event":"%s","session":"%s","type":"%s"}\\n' \\
-            "$1" "$NOTCHY_SESSION_ID" "$TYPE" \\
+        printf '{"event":"%s","session":"%s","type":"%s","busy":%s}\\n' \\
+            "$1" "$NOTCHY_SESSION_ID" "$TYPE" "$BUSY" \\
             | /usr/bin/nc -U "$SOCKET" -w 1 >/dev/null 2>&1
         exit 0
 
