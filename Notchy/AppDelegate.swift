@@ -117,8 +117,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Detect in background so launch isn't blocked
         sessionStore.detectAllXcodeProjectsAsync()
-        // Boot Sparkle so the scheduled background check runs
-        _ = UpdaterController.shared
+        // Boot Sparkle so the scheduled background check runs, and badge the
+        // status item once it stages an update. Without the badge a menu-bar
+        // app that never quits would sit on a downloaded update indefinitely.
+        UpdaterController.shared.onPendingUpdateChanged = { [weak self] in
+            self?.refreshStatusItemIcon()
+        }
     }
 
     /// Remove the socket on the way out. Left behind, the hook scripts' own
@@ -137,12 +141,67 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(named: "menuIcon")
-            button.image?.isTemplate = true
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
+        refreshStatusItemIcon()
+    }
+
+    private func refreshStatusItemIcon() {
+        statusItem?.button?.image = Self.statusIcon(
+            badged: UpdaterController.shared.pendingUpdate != nil
+        )
+    }
+
+    /// The menu-bar icon, with a dot in the top-right corner when an update is
+    /// staged and waiting to be installed.
+    ///
+    /// The badge punches a transparent ring out of the artwork before filling
+    /// the dot: drawn straight on, a same-coloured dot merges into the icon's
+    /// border and reads as a smudge. The result stays a template image, so the
+    /// light/dark menu bar and the inverted highlight while the menu is open
+    /// are still the system's job.
+    static func statusIcon(badged: Bool) -> NSImage? {
+        guard let base = NSImage(named: "menuIcon") else { return nil }
+        base.isTemplate = true
+        guard badged else { return base }
+
+        let image = NSImage(size: base.size, flipped: false) { rect in
+            base.draw(in: rect)
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
+            // The artwork is a 16-unit grid (see scripts/gen_menu_icon.swift),
+            // so place the badge in those units and scale to the rect AppKit
+            // asked for. The figure only occupies rows 2...13, which leaves the
+            // top-right corner free for the dot to sit against.
+            // Close to the largest the dot can get: the punched-out ring has to
+            // clear the right eye, whose nearest corner (12, 11) sits 2.83
+            // units from this centre, and `radius + gap` is 2.6.
+            let unit = rect.width / 16
+            let center = CGPoint(x: rect.minX + 14 * unit, y: rect.minY + 13 * unit)
+            let radius = 2 * unit
+            let gap = 0.6 * unit
+
+            ctx.setBlendMode(.clear)
+            ctx.fillEllipse(in: CGRect(
+                x: center.x - radius - gap,
+                y: center.y - radius - gap,
+                width: (radius + gap) * 2,
+                height: (radius + gap) * 2
+            ))
+            ctx.setBlendMode(.normal)
+            // Colour is irrelevant — a template image is recoloured by AppKit.
+            ctx.setFillColor(NSColor.black.cgColor)
+            ctx.fillEllipse(in: CGRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            ))
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 
     private func setupPanel() {
@@ -342,6 +401,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        // Sparkle has already downloaded this one; it only needs a relaunch.
+        // Bold so it reads as the actionable item rather than another entry.
+        if let pending = UpdaterController.shared.pendingUpdate {
+            let updateItem = NSMenuItem(
+                title: "Restart to Update to \(pending.version)\u{2026}",
+                action: #selector(installPendingUpdate),
+                keyEquivalent: ""
+            )
+            updateItem.target = self
+            let menuFont = NSFont.menuFont(ofSize: 0)
+            updateItem.attributedTitle = NSAttributedString(
+                string: updateItem.title,
+                attributes: [
+                    .font: NSFontManager.shared.convert(menuFont, toHaveTrait: .boldFontMask)
+                ]
+            )
+            menu.addItem(updateItem)
+        }
+
         let checkUpdatesItem = NSMenuItem(
             title: "Check for Updates\u{2026}",
             action: #selector(checkForUpdates),
@@ -430,6 +508,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func checkForUpdates() {
         UpdaterController.shared.checkForUpdates()
+    }
+
+    /// Install the already-downloaded update and relaunch.
+    ///
+    /// This closes every terminal tab, agents mid-turn included, so it asks
+    /// first — and says how many tabs are still working, since the panel may
+    /// not even be open when the user picks this from the menu.
+    @objc private func installPendingUpdate() {
+        guard let pending = UpdaterController.shared.pendingUpdate else { return }
+
+        let working = sessionStore.sessions.filter { $0.terminalStatus == .working }.count
+        // A menu-bar app isn't frontmost, so the alert would open behind
+        // whatever the user is looking at.
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Update to \(pending.version) and restart?"
+        var detail = "Notchy will quit, install the update, and reopen. "
+            + "All terminal tabs will be closed."
+        if working == 1 {
+            detail += "\n\n1 tab is still working — it will be interrupted."
+        } else if working > 1 {
+            detail += "\n\n\(working) tabs are still working — they will be interrupted."
+        }
+        alert.informativeText = detail
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Update and Restart")
+        alert.addButton(withTitle: "Later")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        UpdaterController.shared.installPendingUpdate()
     }
 
     // MARK: - External display management

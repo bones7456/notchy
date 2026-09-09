@@ -29,6 +29,7 @@ A macOS menu bar app that puts Claude Code or Codex right in your MacBook's notc
 - **Live status in the notch** — animated pill shows whether the agent is working, waiting, or done
 - **Agent-reported status** — opt in via Settings → Integrations → Status detection to have the agents report their own state instead of Notchy inferring it from terminal output; see [Status detection](#status-detection) below
 - **Git checkpoints** — Cmd+S to snapshot your project before the agent makes changes
+- **Update badge** — when an update has been downloaded and is waiting to install, a dot appears on the menu bar icon and the menu gains a **Restart to Update to _x.y.z_…** item. Sparkle would otherwise install it silently on quit, which for a menu bar app can mean never; picking the item installs and relaunches immediately (it asks first, and tells you how many tabs are still working)
 
 ### Tab kinds
 
