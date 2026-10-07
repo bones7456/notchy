@@ -528,6 +528,15 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
                 return nil // consume the event
             }
 
+            // Ctrl+Enter: AppKit treats it as "show context menu" for the key
+            // view, so it would pop our right-click menu instead of reaching the
+            // shell. Send the kitty CSI u sequence (Claude CLI: "send now").
+            if event.keyCode == 36,
+               event.modifierFlags.intersection([.shift, .option, .control, .command]) == .control {
+                self.send(txt: "\u{1b}[13;5u")
+                return nil
+            }
+
             // Cmd+Backspace → kill line (send Ctrl-U to clear from cursor to start of line)
             if event.keyCode == 51 && event.modifierFlags.contains(.command) {
                 self.send(txt: "\u{15}")

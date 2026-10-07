@@ -72,6 +72,7 @@ enum ReservedShortcut {
         (124, .command, "Next tab"),                     // ⌘→
         (123, .command, "Previous tab"),                 // ⌘←
         (36, .shift, "Newline"),                         // ⇧Return
+        (36, .control, "Send now"),                      // ⌃Return
     ]
 
     /// Returns the name of the action this shortcut is reserved for, or nil if

@@ -124,6 +124,7 @@ The tab context menu (right-click a tab) also gains **Create Checkpoint** — a 
 | <kbd>Cmd</kbd>+<kbd>S</kbd> | Create a git checkpoint of the active project |
 | <kbd>Cmd</kbd>+<kbd>=</kbd> (or <kbd>Cmd</kbd>+<kbd>+</kbd>) / <kbd>Cmd</kbd>+<kbd>−</kbd> | Zoom the terminal font in / out |
 | <kbd>Cmd</kbd>+<kbd>0</kbd> | Reset the terminal font size |
+| <kbd>Ctrl</kbd>+<kbd>Return</kbd> | Pass Ctrl+Return through to the terminal (Claude Code: send now) instead of opening the context menu |
 | <kbd>Cmd</kbd>+<kbd>G</kbd> | Type `git status` (default quick-input binding; customizable in Settings → Quick Input) |
 
 ## Requirements
