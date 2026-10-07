@@ -79,6 +79,26 @@ struct XcodeDetectorTests {
         #expect(XcodeDetector.parseProjectList(from: "").isEmpty)
     }
 
+    // MARK: - parseSnapshot(from:)
+
+    @Test("The combined result splits into the front project and the full list")
+    func parseSnapshotTypical() {
+        let raw = "B.xcworkspace|||/b@@@A.xcodeproj|||/a:::B.xcworkspace|||/b:::"
+        let snapshot = XcodeDetector.parseSnapshot(from: raw)
+        #expect(snapshot.front == XcodeProject(name: "B", path: "/b"))
+        #expect(snapshot.all == [
+            XcodeProject(name: "A", path: "/a"),
+            XcodeProject(name: "B", path: "/b"),
+        ])
+    }
+
+    @Test("An empty combined result (no workspace documents) yields nothing")
+    func parseSnapshotEmpty() {
+        let snapshot = XcodeDetector.parseSnapshot(from: "")
+        #expect(snapshot.front == nil)
+        #expect(snapshot.all.isEmpty)
+    }
+
     // MARK: - projectName(fromWindowTitle:)
 
     @Test("The em-dash segment before the file name is the project name")

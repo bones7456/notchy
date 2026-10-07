@@ -28,15 +28,13 @@ class XcodeDetector {
         case unavailable
     }
 
-    /// Detects the frontmost Xcode project
-    func detectFrontmostProject() -> XcodeProject? {
-        switch queryFrontViaAppleScript() {
-        case .success(let project):
-            return project
-        case .unavailable:
-            return queryViaWindowTitle()
-        }
-    }
+    /// `NSAppleScript` isn't thread-safe: two scripts compiling `tell application
+    /// "Xcode"` on different threads at once can crash inside AppleScript's
+    /// terminology loading (seen when the 5-second poll overlapped the
+    /// detection that runs as the panel opens). Callers are on background
+    /// queues, so every script is funneled through this one serial queue
+    /// rather than the main thread, where a slow Apple Event would stall the UI.
+    private let scriptQueue = DispatchQueue(label: "li.luy.notchy.xcode-applescript", qos: .userInitiated)
 
     /// Detects ALL open Xcode workspace documents
     func detectAllProjects() -> [XcodeProject] {
@@ -48,6 +46,18 @@ class XcodeDetector {
         }
     }
 
+    /// Detects all open workspace documents plus the frontmost one, in a single
+    /// AppleScript round trip.
+    func detectAllAndFrontmostProjects() -> (all: [XcodeProject], front: XcodeProject?) {
+        switch querySnapshotViaAppleScript() {
+        case .success(let snapshot):
+            return snapshot
+        case .unavailable:
+            let projects = allProjectsViaWindowTitles()
+            return (projects, projects.first)
+        }
+    }
+
     // MARK: - AppleScript
 
     private func isXcodeRunning() -> Bool {
@@ -56,26 +66,37 @@ class XcodeDetector {
         }
     }
 
-    private func queryFrontViaAppleScript() -> QueryOutcome<XcodeProject?> {
-        guard isXcodeRunning() else { return .success(nil) }
+    /// Runs `source` on `scriptQueue`. Returns nil when the script couldn't be
+    /// built, raised an error, or produced no string.
+    private func runScript(_ source: String) -> String? {
+        scriptQueue.sync {
+            guard let appleScript = NSAppleScript(source: source) else { return nil }
+            var error: NSDictionary?
+            let result = appleScript.executeAndReturnError(&error)
+            if error != nil { return nil }
+            return result.stringValue
+        }
+    }
+
+    private func querySnapshotViaAppleScript() -> QueryOutcome<(all: [XcodeProject], front: XcodeProject?)> {
+        guard isXcodeRunning() else { return .success(([], nil)) }
 
         let script = """
         tell application "Xcode"
             if (count of workspace documents) is 0 then return ""
             set activeDoc to front workspace document
-            set docPath to path of activeDoc
-            set docName to name of activeDoc
-            return docName & "|||" & docPath
+            set output to (name of activeDoc) & "|||" & (path of activeDoc) & "@@@"
+            repeat with doc in workspace documents
+                set docName to name of doc
+                set docPath to path of doc
+                set output to output & docName & "|||" & docPath & ":::"
+            end repeat
+            return output
         end tell
         """
 
-        guard let appleScript = NSAppleScript(source: script) else { return .unavailable }
-        var error: NSDictionary?
-        let result = appleScript.executeAndReturnError(&error)
-        if error != nil { return .unavailable }
-
-        guard let resultString = result.stringValue else { return .unavailable }
-        return .success(Self.parseProject(from: resultString))
+        guard let resultString = runScript(script) else { return .unavailable }
+        return .success(Self.parseSnapshot(from: resultString))
     }
 
     private func queryAllViaAppleScript() -> QueryOutcome<[XcodeProject]> {
@@ -93,13 +114,7 @@ class XcodeDetector {
         end tell
         """
 
-        guard let appleScript = NSAppleScript(source: script) else { return .unavailable }
-        var error: NSDictionary?
-        let result = appleScript.executeAndReturnError(&error)
-        if error != nil { return .unavailable }
-
-        guard let resultString = result.stringValue else { return .unavailable }
-
+        guard let resultString = runScript(script) else { return .unavailable }
         return .success(Self.parseProjectList(from: resultString))
     }
 
@@ -112,6 +127,18 @@ class XcodeDetector {
         string.components(separatedBy: ":::")
             .filter { !$0.isEmpty }
             .compactMap { parseProject(from: $0) }
+    }
+
+    /// Parses the combined "front + all" AppleScript result:
+    /// `frontName|||frontPath@@@` followed by the `:::`-separated list. An
+    /// empty string (no workspace documents) yields no projects and no front.
+    static func parseSnapshot(from string: String) -> (all: [XcodeProject], front: XcodeProject?) {
+        guard let range = string.range(of: "@@@") else {
+            return (parseProjectList(from: string), nil)
+        }
+        let front = parseProject(from: String(string[..<range.lowerBound]))
+        let all = parseProjectList(from: String(string[range.upperBound...]))
+        return (all, front)
     }
 
     /// Parses one `name|||path` entry. The name has any `.xcodeproj`/
@@ -144,11 +171,6 @@ class XcodeDetector {
     }
 
     // MARK: - Window title fallback
-
-    private func queryViaWindowTitle() -> XcodeProject? {
-        let projects = allProjectsViaWindowTitles()
-        return projects.first
-    }
 
     private func allProjectsViaWindowTitles() -> [XcodeProject] {
         guard let xcode = NSWorkspace.shared.runningApplications.first(where: {

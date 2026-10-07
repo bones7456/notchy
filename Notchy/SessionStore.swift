@@ -294,8 +294,7 @@ class SessionStore {
     func detectAndSwitchAsync() {
         guard SettingsManager.shared.xcodeIntegrationEnabled else { return }
         DispatchQueue.global(qos: .userInitiated).async {
-            let allProjects = XcodeDetector.shared.detectAllProjects()
-            let frontProject = XcodeDetector.shared.detectFrontmostProject()
+            let (allProjects, frontProject) = XcodeDetector.shared.detectAllAndFrontmostProjects()
             DispatchQueue.main.async {
                 self.applyDetectedProjects(allProjects)
                 if let project = frontProject {
