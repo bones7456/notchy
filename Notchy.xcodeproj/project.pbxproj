@@ -508,10 +508,10 @@
 /* Begin XCRemoteSwiftPackageReference section */
 		BD0000010000000000000001 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/bones7456/SwiftTerm.git";
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
 			requirement = {
-				kind = revision;
-				revision = 55af45b952bb9047c7a13dd7e6b0b08972154321;
+				kind = exactVersion;
+				version = 1.19.0;
 			};
 		};
 		BD0000040000000000000004 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
