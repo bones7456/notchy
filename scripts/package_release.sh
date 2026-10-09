@@ -24,7 +24,7 @@ set -euo pipefail
 #                           generates dist/appcast.xml; otherwise it is
 #                           skipped with a warning.
 #   SPARKLE_VERSION         Optional. Sparkle release tag to download tools
-#                           from. Defaults to 2.9.2.
+#                           from. Defaults to 2.10.0.
 #   SPARKLE_RELEASE_NOTES_FILE
 #                           Optional. Path to an HTML file with rendered
 #                           release notes. When set, its content is inlined
@@ -194,7 +194,7 @@ APPCAST_PATH="$DIST_DIR/appcast.xml"
 rm -f "$APPCAST_PATH"
 
 if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
-    SPARKLE_VERSION="${SPARKLE_VERSION:-2.9.2}"
+    SPARKLE_VERSION="${SPARKLE_VERSION:-2.10.0}"
     SPARKLE_TOOLS_DIR="$STAGE_DIR/sparkle-tools"
     SPARKLE_ARCHIVE="$STAGE_DIR/Sparkle-${SPARKLE_VERSION}.tar.xz"
     SPARKLE_URL="https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
