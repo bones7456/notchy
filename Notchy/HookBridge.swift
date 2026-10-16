@@ -356,6 +356,13 @@ final class HookBridge {
             # running a background shell command (a dev server, a watcher)
             # carries an entry too, and treating that as busy would mean such a
             # tab never reported completion again.
+            #
+            # Known gap: a subagent that backgrounds its own command and ends
+            # its turn to wait on it drops out of the list entirely, leaving
+            # only that command as a "shell" entry with nothing tying it to
+            # the subagent. Completion is then reported early. The payload
+            # carries no way to tell it from a dev server, so this is left
+            # alone rather than guessed at.
             BUSY=$(/usr/bin/plutil -extract background_tasks json -o - -- - 2>/dev/null \\
                 | tr '{' '\\n' \\
                 | grep '"type"[[:space:]]*:[[:space:]]*"subagent"' \\
