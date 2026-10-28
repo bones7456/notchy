@@ -43,6 +43,13 @@ struct SwiftTermSeamTests {
         view.feed(text: text)
     }
 
+    /// Hands `text` to Notchy's process-output hook as one chunk, the way the
+    /// process would — unlike `feed`, which bypasses the hook. Lets a test pick
+    /// the chunk boundaries a real process only produces by timing.
+    private func deliver(_ view: ClickThroughTerminalView, _ text: String) {
+        view.dataReceived(slice: ArraySlice(Array(text.utf8)))
+    }
+
     /// Lines as the classifier sees them: newline-joined, trailing blanks dropped.
     private func lines(_ text: String?) -> [String] {
         (text ?? "").components(separatedBy: "\n").map { $0.replacingOccurrences(of: " +$", with: "", options: .regularExpression) }
@@ -75,7 +82,7 @@ struct SwiftTermSeamTests {
     }
 
     /// Polls `condition` while the main run loop delivers process output.
-    private func waitUntil(_ what: String, timeout: Duration = .seconds(5), _ condition: () -> Bool) async throws {
+    private func waitUntil(_ what: String, timeout: Duration = .seconds(10), _ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now + timeout
         while !condition() {
             if ContinuousClock.now > deadline {
@@ -277,12 +284,29 @@ struct SwiftTermSeamTests {
         #expect(lines(view.extractFullVisibleText()).suffix(2) == ["line60", "BACK"])
     }
 
+    /// Quitting vim/less usually arrives in the same chunk as the shell prompt,
+    /// and a burst of output can arrive together with the switch into a TUI.
+    /// CI caught this: the live bottom was only re-recorded on chunks that
+    /// stayed on the normal screen throughout, so status read stale rows.
+    @Test("Alternate screen switches mid-chunk still track the live bottom")
+    func alternateScreenSwitchesMidChunk() {
+        let view = makeView()
+        deliver(view, (1...60).map { "line\($0)\r\n" }.joined() + "\u{1b}[?1049h\u{1b}[HALT\r\n")
+        #expect(lines(view.extractFullVisibleText()) == ["ALT"])
+        deliver(view, "\u{1b}[?1049lBACK\r\n")
+        #expect(lines(view.extractFullVisibleText()).suffix(2) == ["line60", "BACK"])
+    }
+
     @Test("NOTCHY_SESSION_ID reaches the spawned process")
     func sessionIdReachesChild() async throws {
         let view = makeView()
         defer { view.terminate() }
         let id = UUID()
+        // The test host's environment carries XCTest's DYLD injection. SIP
+        // strips it from /bin/sh locally, but CI runners have SIP off, so the
+        // shell would load the test bundle injector too. The app never has it.
         let env = TerminalManager.shared.buildEnvironment(sessionId: id)
+            .filter { !$0.hasPrefix("DYLD_") && !$0.hasPrefix("__XPC_DYLD_") }
         run("echo \"id=$NOTCHY_SESSION_ID term=$TERM\"; sleep 30", in: view, environment: env)
         try await waitUntil("session id echoed") { screenContains(view, "id=") }
         #expect(screenContains(view, "id=\(id.uuidString) term=xterm-256color"))

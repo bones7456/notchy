@@ -703,9 +703,11 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         // for the duration of the read, then restore. This runs on the main
         // thread; the setter has no side effects (no refresh, no redraw), so
         // nothing else can observe the temporary value.
+        // The alternate screen has no scrollback, so its viewport is always the
+        // live screen — and latestYBase belongs to the normal buffer anyway.
         let buffer = terminal.buffer
         let savedYDisp = buffer.yDisp
-        let needsSwap = savedYDisp != latestYBase
+        let needsSwap = !isAlternateScreen && savedYDisp != latestYBase
         if needsSwap {
             buffer.yDisp = latestYBase
         }
@@ -764,16 +766,16 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         // get reporting back on the next chunk.
         allowMouseReporting = appRequestsMouseEvents
 
-        let wasAlternate = isAlternateScreen
-
         super.dataReceived(slice: slice)
         hasNewData = true
 
         // Re-read the buffer: super may have switched buffers (entering or
         // leaving vim via \e[?1049h/l). The alternate buffer's yDisp is
-        // unrelated to the normal buffer's live bottom, so only record when we
-        // stayed on the normal buffer for the whole chunk.
-        guard !wasAlternate, !isAlternateScreen else { return }
+        // unrelated to the normal buffer's live bottom, so skip chunks that
+        // end on it. A chunk that *leaves* it must still record: quitting vim
+        // usually arrives together with the shell prompt, and skipping it
+        // would leave status detection reading stale rows until more output.
+        guard !isAlternateScreen else { return }
 
         if isViewportAtBottom {
             latestYBase = getTerminal().buffer.yDisp
