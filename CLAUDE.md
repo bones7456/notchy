@@ -114,7 +114,9 @@ The two agents install very differently:
 
 **Quick input**: Users can bind custom shortcuts to canned commands (Settings → Quick Input). `QuickInputPair` (keyCode + modifiers + command + autoRun) is matched in `ClickThroughTerminalView`'s key monitor and persisted as JSON via `SettingsManager.quickInputPairs`. The recorder validates new combos against `enum ReservedShortcut` (in `QuickInput.swift`) so a binding can't shadow an existing action.
 
-> When adding any new keyboard shortcut anywhere in the app (panel/tab commands, terminal editing keys, global hotkeys), register it in `enum ReservedShortcut` so the quick-input recorder rejects user bindings that would collide with it.
+**Shortcut help**: Cmd+/ toggles `SessionStore.isShowingShortcutHelp`, which shows `ShortcutHelpOverlay` over the whole panel. Its built-in rows come from `ReservedShortcut.helpSections` — `ReservedShortcut.entries` grouped by `Group`, with entries sharing a name merged into one row (⌘→ / ⌃⇥ → "Next tab") — and its last section lists the user's active quick-input pairs. The "Edit Quick Input…" link posts `.NotchyOpenSettings` with a `SettingsTab`, which `AppDelegate` turns into `presentSettings(tab:)`. Focus goes back to the terminal in the overlay's `onDisappear`, so every close path (Esc, backdrop click, ✕, Cmd+/ again) is covered; it's skipped when the quick switcher took the overlay's place, so the switcher's text field keeps focus.
+
+> When adding any new keyboard shortcut anywhere in the app (panel/tab commands, terminal editing keys, global hotkeys), register it in `ReservedShortcut.entries` with a name and `Group`. That makes the quick-input recorder reject user bindings that would collide with it, and lists it in the Cmd+/ help overlay. Set `showInHelp: false` only for standard macOS editing keys.
 
 ## Dependencies
 

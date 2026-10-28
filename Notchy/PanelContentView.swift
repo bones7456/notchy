@@ -186,6 +186,13 @@ struct PanelContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.12), value: sessionStore.isShowingQuickSwitcher)
+        .overlay {
+            if sessionStore.isShowingShortcutHelp {
+                ShortcutHelpOverlay(sessionStore: sessionStore)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: sessionStore.isShowingShortcutHelp)
         .onAppear {
             sessionStore.refreshLastCheckpoint()
         }

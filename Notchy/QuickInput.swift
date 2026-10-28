@@ -45,47 +45,97 @@ struct QuickInputPair: Codable, Identifiable, Equatable {
 
 /// Shortcuts already claimed by Notchy elsewhere (global hotkey, panel/tab
 /// commands, terminal editing keys). Quick-input bindings are checked against
-/// this list so the user can't shadow an existing action.
+/// this list so the user can't shadow an existing action, and the ⌘/ help
+/// overlay renders it — so registering a shortcut here is all it takes to
+/// document it in the app.
 enum ReservedShortcut {
+    /// Help-overlay sections, in display order.
+    enum Group: String, CaseIterable {
+        case global = "Global"
+        case tabs = "Tabs"
+        case panel = "Panel"
+        case terminal = "Terminal"
+    }
+
+    struct Entry {
+        let keyCode: UInt16
+        let mods: NSEvent.ModifierFlags
+        let name: String
+        let group: Group
+        /// False for standard editing keys (⌘C/⌘V/⌘A) every Mac user already
+        /// knows; they're still reserved, just not worth a row in the help.
+        var showInHelp: Bool = true
+    }
+
+    /// One line of the help overlay: an action and every combo bound to it.
+    struct HelpRow: Equatable {
+        let name: String
+        let keys: [String]
+    }
+
     /// keyCodes for the digits 1–9 (⌘1…⌘9 jump to tab N).
     private static let digitKeyCodes: Set<UInt16> = [18, 19, 20, 21, 23, 22, 26, 28, 25]
 
-    private static let reserved: [(keyCode: UInt16, mods: NSEvent.ModifierFlags, name: String)] = [
-        (50, .control, "Toggle panel"),                 // Ctrl+`
-        (17, .command, "New tab"),                       // ⌘T
-        (17, [.command, .shift], "Shadow tab"),          // ⌘⇧T
-        (13, .command, "Close tab"),                     // ⌘W
-        (35, .command, "Pin tab"),                       // ⌘P
-        (35, [.command, .shift], "Pin panel"),           // ⌘⇧P
-        (40, .command, "Quick switcher"),                // ⌘K
-        (1, .command, "Create checkpoint"),              // ⌘S
-        (8, .command, "Copy"),                           // ⌘C
-        (9, .command, "Paste"),                          // ⌘V
-        (0, .command, "Select All"),                     // ⌘A
-        (29, .command, "Reset font size"),               // ⌘0
-        (24, .command, "Zoom in"),                       // ⌘=
-        (24, [.command, .shift], "Zoom in"),             // ⌘+
-        (27, .command, "Zoom out"),                      // ⌘-
-        (51, .command, "Kill line"),                     // ⌘⌫
-        (48, .control, "Next tab"),                      // Ctrl+Tab
-        (48, [.control, .shift], "Previous tab"),        // Ctrl+⇧Tab
-        (124, .command, "Next tab"),                     // ⌘→
-        (123, .command, "Previous tab"),                 // ⌘←
-        (36, .shift, "Newline"),                         // ⇧Return
-        (36, .control, "Send now"),                      // ⌃Return
+    /// Entries sharing a name and group are merged into one help row, keys in
+    /// the order listed here.
+    static let entries: [Entry] = [
+        Entry(keyCode: 50, mods: .control, name: "Toggle panel", group: .global),                 // Ctrl+`
+        Entry(keyCode: 17, mods: .command, name: "New tab", group: .tabs),                       // ⌘T
+        Entry(keyCode: 17, mods: [.command, .shift], name: "Shadow tab", group: .tabs),          // ⌘⇧T
+        Entry(keyCode: 13, mods: .command, name: "Close tab", group: .tabs),                     // ⌘W
+        Entry(keyCode: 124, mods: .command, name: "Next tab", group: .tabs),                     // ⌘→
+        Entry(keyCode: 48, mods: .control, name: "Next tab", group: .tabs),                      // Ctrl+Tab
+        Entry(keyCode: 123, mods: .command, name: "Previous tab", group: .tabs),                 // ⌘←
+        Entry(keyCode: 48, mods: [.control, .shift], name: "Previous tab", group: .tabs),        // Ctrl+⇧Tab
+        Entry(keyCode: 35, mods: .command, name: "Pin tab", group: .tabs),                       // ⌘P
+        Entry(keyCode: 40, mods: .command, name: "Quick switcher", group: .panel),               // ⌘K
+        Entry(keyCode: 35, mods: [.command, .shift], name: "Pin panel", group: .panel),          // ⌘⇧P
+        Entry(keyCode: 1, mods: .command, name: "Create checkpoint", group: .panel),             // ⌘S
+        Entry(keyCode: 44, mods: .command, name: "Keyboard shortcuts", group: .panel),           // ⌘/
+        Entry(keyCode: 24, mods: .command, name: "Zoom in", group: .terminal),                   // ⌘=
+        Entry(keyCode: 24, mods: [.command, .shift], name: "Zoom in", group: .terminal),         // ⌘+
+        Entry(keyCode: 27, mods: .command, name: "Zoom out", group: .terminal),                  // ⌘-
+        Entry(keyCode: 29, mods: .command, name: "Reset font size", group: .terminal),           // ⌘0
+        Entry(keyCode: 51, mods: .command, name: "Kill line", group: .terminal),                 // ⌘⌫
+        Entry(keyCode: 36, mods: .shift, name: "Newline", group: .terminal),                     // ⇧Return
+        Entry(keyCode: 36, mods: .control, name: "Send now", group: .terminal),                  // ⌃Return
+        Entry(keyCode: 8, mods: .command, name: "Copy", group: .terminal, showInHelp: false),    // ⌘C
+        Entry(keyCode: 9, mods: .command, name: "Paste", group: .terminal, showInHelp: false),   // ⌘V
+        Entry(keyCode: 0, mods: .command, name: "Select All", group: .terminal, showInHelp: false), // ⌘A
     ]
 
     /// Returns the name of the action this shortcut is reserved for, or nil if
     /// it's free to assign.
     static func conflict(keyCode: UInt16, modifiers: UInt) -> String? {
         let flags = NSEvent.ModifierFlags(rawValue: modifiers).intersection(QuickInputPair.relevantModifiers)
-        if let match = reserved.first(where: { $0.keyCode == keyCode && $0.mods == flags }) {
+        if let match = entries.first(where: { $0.keyCode == keyCode && $0.mods == flags }) {
             return match.name
         }
         if flags == .command, digitKeyCodes.contains(keyCode) {
             return "Jump to tab"
         }
         return nil
+    }
+
+    /// The help overlay's built-in sections: `entries` grouped, merged by name,
+    /// with ⌘1…⌘9 (matched by `digitKeyCodes`, not listed in `entries`) folded
+    /// into a single row.
+    static var helpSections: [(group: Group, rows: [HelpRow])] {
+        Group.allCases.compactMap { group in
+            var rows: [HelpRow] = []
+            for entry in entries where entry.group == group && entry.showInHelp {
+                let key = KeyboardShortcutFormatter.string(keyCode: entry.keyCode, modifiers: entry.mods.rawValue) ?? ""
+                if let index = rows.firstIndex(where: { $0.name == entry.name }) {
+                    rows[index] = HelpRow(name: entry.name, keys: rows[index].keys + [key])
+                } else {
+                    rows.append(HelpRow(name: entry.name, keys: [key]))
+                }
+            }
+            if group == .tabs {
+                rows.insert(HelpRow(name: "Jump to tab 1–9", keys: ["⌘1–9"]), at: min(3, rows.count))
+            }
+            return rows.isEmpty ? nil : (group, rows)
+        }
     }
 }
 

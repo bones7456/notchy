@@ -119,6 +119,7 @@ The tab context menu (right-click a tab) also gains **Create Checkpoint** — a 
 | <kbd>Cmd</kbd>+<kbd>1</kbd>…<kbd>9</kbd> | Jump to tab N |
 | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> | Cycle to the next / previous tab |
 | <kbd>Cmd</kbd>+<kbd>K</kbd> | Open the session quick switcher (fuzzy search, most-recently-used order) |
+| <kbd>Cmd</kbd>+<kbd>/</kbd> | Show this list of shortcuts in the panel, plus your quick-input bindings (Esc or click outside to close) |
 | <kbd>Cmd</kbd>+<kbd>P</kbd> | Pin / unpin the current tab |
 | <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Pin / unpin the whole panel (keeps it open when it loses focus) |
 | <kbd>Cmd</kbd>+<kbd>S</kbd> | Create a git checkpoint of the active project |

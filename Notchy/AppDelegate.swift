@@ -233,6 +233,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 for window in self.externalNotchWindows.values { window.endHover() }
             }
         }
+        NotificationCenter.default.addObserver(
+            forName: .NotchyOpenSettings,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.presentSettings(tab: notification.object as? SettingsTab ?? .general)
+        }
     }
 
     private func setupNotchWindow() {

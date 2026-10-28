@@ -6,6 +6,8 @@ extension Notification.Name {
     static let NotchyHidePanel = Notification.Name("NotchyHidePanel")
     static let NotchyExpandPanel = Notification.Name("NotchyExpandPanel")
     static let NotchyNotchStatusChanged = Notification.Name("NotchyNotchStatusChanged")
+    /// Posted with a `SettingsTab` as the object; `AppDelegate` opens Settings on it.
+    static let NotchyOpenSettings = Notification.Name("NotchyOpenSettings")
 
 }
 
@@ -67,6 +69,7 @@ class SessionStore {
     var isWindowFocused = true
     var isShowingDialog = false
     var isShowingQuickSwitcher = false
+    var isShowingShortcutHelp = false
     var hasCompletedInitialDetection = false
 
     /// Transient text shown next to the pin icon — the panel dimensions while

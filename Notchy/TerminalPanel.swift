@@ -454,7 +454,16 @@ class TerminalPanel: NSPanel, NSWindowDelegate {
         // Cmd+K: toggle the session quick switcher
         if event.modifierFlags.intersection([.command, .shift, .control, .option]) == .command,
            event.charactersIgnoringModifiers?.lowercased() == "k" {
+            sessionStore.isShowingShortcutHelp = false
             sessionStore.isShowingQuickSwitcher.toggle()
+            return true
+        }
+        // Cmd+/: toggle the keyboard shortcut help. Matched by keyCode like its
+        // ReservedShortcut entry, so it's the same physical key on every layout.
+        if event.modifierFlags.intersection([.command, .shift, .control, .option]) == .command,
+           event.keyCode == 44 {
+            sessionStore.isShowingQuickSwitcher = false
+            sessionStore.isShowingShortcutHelp.toggle()
             return true
         }
         // Ctrl+Tab / Ctrl+Shift+Tab: cycle sessions

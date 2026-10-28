@@ -89,6 +89,47 @@ struct QuickInputTests {
         #expect(ReservedShortcut.conflict(keyCode: 17, modifiers: withCapsLock) == "New tab")
     }
 
+    @Test("⌘/ is reserved for the shortcut help")
+    func helpShortcutConflicts() {
+        #expect(ReservedShortcut.conflict(keyCode: 44, modifiers: cmd) == "Keyboard shortcuts")
+    }
+
+    @Test("No two entries claim the same combo")
+    func entriesAreUnique() {
+        let combos = ReservedShortcut.entries.map { "\($0.keyCode)-\($0.mods.rawValue)" }
+        #expect(Set(combos).count == combos.count)
+    }
+
+    // MARK: - ReservedShortcut.helpSections
+
+    @Test("Help sections follow Group order and skip hidden entries")
+    func helpSectionsOrderAndVisibility() {
+        let sections = ReservedShortcut.helpSections
+        #expect(sections.map(\.group) == ReservedShortcut.Group.allCases)
+        let names = sections.flatMap { $0.rows.map(\.name) }
+        #expect(!names.contains("Copy"))
+        #expect(!names.contains("Paste"))
+        #expect(!names.contains("Select All"))
+        // Every visible entry is documented somewhere.
+        for entry in ReservedShortcut.entries where entry.showInHelp {
+            #expect(names.contains(entry.name), "\(entry.name) missing from help")
+        }
+    }
+
+    @Test("Entries sharing a name merge into one row, keys in listed order")
+    func helpRowsMerge() {
+        let rows = ReservedShortcut.helpSections.flatMap(\.rows)
+        #expect(rows.filter { $0.name == "Zoom in" } == [.init(name: "Zoom in", keys: ["⌘=", "⇧⌘="])])
+        #expect(rows.first { $0.name == "Next tab" }?.keys == ["⌘→", "⌃⇥"])
+        #expect(Set(rows.map(\.name)).count == rows.count)
+    }
+
+    @Test("⌘1…⌘9 appear as one tab row")
+    func helpIncludesTabJump() {
+        let tabs = ReservedShortcut.helpSections.first { $0.group == .tabs }?.rows ?? []
+        #expect(tabs.contains(.init(name: "Jump to tab 1–9", keys: ["⌘1–9"])))
+    }
+
     // MARK: - KeyboardShortcutFormatter.string
 
     @Test("Modifiers render in fixed ⌃⌥⇧⌘ order")
