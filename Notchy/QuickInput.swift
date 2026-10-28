@@ -41,6 +41,19 @@ struct QuickInputPair: Codable, Identifiable, Equatable {
     var isActive: Bool {
         modifiers != 0 && !command.isEmpty
     }
+
+    /// The built-in action this pair's combo collides with, if any. The recorder
+    /// rejects reserved combos, so this only happens to a pair saved before its
+    /// combo became reserved (e.g. ⌘/ before the shortcut help existed).
+    var reservedConflict: String? {
+        ReservedShortcut.conflict(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    /// Whether this pair actually fires: configured, and not shadowed by a
+    /// built-in shortcut — the built-in wins so a stale binding can't hide it.
+    var isUsable: Bool {
+        isActive && reservedConflict == nil
+    }
 }
 
 /// Shortcuts already claimed by Notchy elsewhere (global hotkey, panel/tab

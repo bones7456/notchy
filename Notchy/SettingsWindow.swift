@@ -286,6 +286,18 @@ struct QuickInputRow: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            fields
+            if pair.isActive, let name = pair.reservedConflict {
+                Label("Now used for “\(name)” — this shortcut won't fire. Record a new one.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    private var fields: some View {
         HStack(spacing: QuickInputLayout.spacing) {
             KeyRecorder(keyCode: $pair.keyCode, modifiers: $pair.modifiers, validate: validate)
                 .frame(width: QuickInputLayout.shortcut, height: 22)

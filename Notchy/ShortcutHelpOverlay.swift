@@ -11,7 +11,7 @@ struct ShortcutHelpOverlay: View {
     private var quickInputRows: [ReservedShortcut.HelpRow] {
         let settings = SettingsManager.shared
         guard settings.quickInputEnabled else { return [] }
-        return settings.quickInputPairs.filter(\.isActive).compactMap { pair in
+        return settings.quickInputPairs.filter(\.isUsable).compactMap { pair in
             guard let key = KeyboardShortcutFormatter.string(keyCode: pair.keyCode, modifiers: pair.modifiers) else {
                 return nil
             }

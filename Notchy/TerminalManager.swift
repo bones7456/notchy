@@ -518,12 +518,12 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
             }
 
             // User-defined quick-input shortcuts (Settings → Quick Input). Checked
-            // first so a user can bind any combo; unconfigured rows (modifiers == 0)
-            // and empty commands are skipped via `isActive`.
+            // first so a user can bind any combo; unconfigured rows and pairs
+            // shadowed by a reserved shortcut are skipped via `isUsable`.
             if SettingsManager.shared.quickInputEnabled {
                 let mods = event.modifierFlags.intersection(QuickInputPair.relevantModifiers).rawValue
                 if let pair = SettingsManager.shared.quickInputPairs.first(where: {
-                    $0.isActive && $0.keyCode == event.keyCode && $0.modifiers == mods
+                    $0.isUsable && $0.keyCode == event.keyCode && $0.modifiers == mods
                 }) {
                     self.send(txt: pair.command + (pair.autoRun ? "\r" : ""))
                     return nil // consume the event

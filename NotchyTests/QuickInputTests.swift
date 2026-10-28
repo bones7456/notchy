@@ -8,7 +8,7 @@ import AppKit
 ///   built-in action (the guard that stops users shadowing ⌘T, ⌘K, ⌘1…9, etc.)
 /// - `KeyboardShortcutFormatter.string` — rendering a (keyCode, modifiers) pair
 ///   as a glyph string like `⌃⌥⇧⌘G`
-/// - `QuickInputPair` — the `isActive` gate, the seed/blank factories, and
+/// - `QuickInputPair` — the `isActive`/`isUsable` gates, the seed/blank factories, and
 ///   Codable round-tripping (how bindings are persisted to UserDefaults)
 ///
 /// The AppKit UI here (`KeyRecorder`, `KeyRecorderButton`) is intentionally not
@@ -173,6 +173,24 @@ struct QuickInputTests {
         #expect(QuickInputPair.defaultGitStatus.autoRun)
         // A blank "+" row is never eligible to fire until configured.
         #expect(!QuickInputPair.blank.isActive)
+    }
+
+    // MARK: - QuickInputPair.isUsable
+
+    @Test("A pair saved on a now-reserved combo is shadowed, not fired")
+    func reservedPairIsNotUsable() {
+        // ⌘/ was free before the shortcut help claimed it.
+        let stale = QuickInputPair(keyCode: 44, modifiers: cmd, command: "ls")
+        #expect(stale.isActive)
+        #expect(stale.reservedConflict == "Keyboard shortcuts")
+        #expect(!stale.isUsable)
+    }
+
+    @Test("isUsable is isActive for a free combo")
+    func freePairIsUsable() {
+        #expect(QuickInputPair.defaultGitStatus.isUsable)
+        #expect(QuickInputPair.defaultGitStatus.reservedConflict == nil)
+        #expect(!QuickInputPair.blank.isUsable)
     }
 
     // MARK: - Codable round-trip (UserDefaults persistence)
