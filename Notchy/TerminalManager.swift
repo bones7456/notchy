@@ -6,7 +6,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
     private var statusTimer: Timer?
-    private var hasNewData = false
+    private(set) var hasNewData = false
     private var selectionCopyDebounceTimer: Timer?
 
     // Tracks the pressure stage of the in-flight click so we fire the
@@ -58,6 +58,42 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    // MARK: - SwiftTerm terminal state
+
+    // Mode reads go through these instead of `getTerminal()` at each call
+    // site. SwiftTerm 2.0 removes `getTerminal()` (see its MigratingFrom1To2
+    // guide); `terminalInputStateSnapshot()` carries all four there.
+    // `SwiftTermSeamTests` pins what each one reports.
+
+    var terminalSize: (cols: Int, rows: Int) {
+        let terminal = getTerminal()
+        return (terminal.cols, terminal.rows)
+    }
+
+    /// DECCKM (`ESC [ ? 1 h`): arrows must be sent as SS3 (`ESC O A`).
+    var usesApplicationCursor: Bool { getTerminal().applicationCursor }
+
+    /// Whether a full-screen app (vim, less, htop) switched to the alternate screen.
+    var isAlternateScreen: Bool { getTerminal().isCurrentBufferAlternate }
+
+    /// Whether the foreground app asked for mouse events (`ESC [ ? 1000 h` and friends).
+    var appRequestsMouseEvents: Bool { getTerminal().mouseMode != .off }
+
+    /// The bytes for an arrow key: `direction` is the final byte (A up, B down,
+    /// C right, D left). Unmodified arrows follow DECCKM; modified ones always
+    /// use CSI, since SS3 has no parameter form.
+    static func arrowKeySequence(_ direction: Character, modifiers: NSEvent.ModifierFlags, applicationCursor: Bool) -> String {
+        let mods = modifiers.intersection([.shift, .option, .control])
+        if mods.isEmpty {
+            return (applicationCursor ? "\u{1b}O" : "\u{1b}[") + String(direction)
+        }
+        var modifier = 1
+        if mods.contains(.shift) { modifier += 1 }
+        if mods.contains(.option) { modifier += 2 }
+        if mods.contains(.control) { modifier += 4 }
+        return "\u{1b}[1;\(modifier)\(direction)"
+    }
+
     // MARK: - Force-click dictionary lookup
 
     /// The trackpad reports a rising pressure stage as the user presses
@@ -75,7 +111,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     /// Characters that count as part of a "word" when expanding outward from
     /// the force-clicked cell. Letters and digits, plus the in-word
     /// punctuation that English entries use (e.g. `co-op`, `don't`).
-    private static let wordCharacters: CharacterSet = {
+    static let wordCharacters: CharacterSet = {
         var set = CharacterSet.alphanumerics
         set.insert(charactersIn: "-'’")
         return set
@@ -83,7 +119,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
     /// Characters that may appear inside a URL token. Used to expand outward
     /// from the clicked cell when resolving "Open URL" from the context menu.
-    private static let urlCharacters: CharacterSet = {
+    static let urlCharacters: CharacterSet = {
         var set = CharacterSet.alphanumerics
         set.insert(charactersIn: "-._~:/?#[]@!$&'()*+,;=%")
         return set
@@ -97,7 +133,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         let point = convert(windowPoint, from: nil)
         let cell = cellDimensions()
         guard cell.width > 0, cell.height > 0 else { return nil }
-        let (cols, rows) = getTerminal().getDims()
+        let (cols, rows) = terminalSize
         let col = min(max(0, Int(point.x / cell.width)), cols - 1)
         let row = min(max(0, Int((frame.height - point.y) / cell.height)), rows - 1)
         return (col, row, cell)
@@ -106,7 +142,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     /// Expand outward from `col` on `row`, collecting the run of cells whose
     /// characters all belong to `allowed`. Returns the joined text and the
     /// starting column, or nil if the clicked cell itself is not in `allowed`.
-    private func expandToken(row: Int, col: Int, allowed: CharacterSet) -> (text: String, startCol: Int)? {
+    func expandToken(row: Int, col: Int, allowed: CharacterSet) -> (text: String, startCol: Int)? {
         let terminal = getTerminal()
         let (cols, _) = terminal.getDims()
 
@@ -508,14 +544,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, self.window?.firstResponder === self else { return event }
 
-            // SwiftTerm sets its kitty "composing" flag in setMarkedText even when
-            // the IME clears the marked text (e.g. pinyin typed then deleted), and
-            // only resets it on the next insertText. While stuck, the kitty encoder
-            // drops every key, so Ctrl+C falls through to interpretKeyEvents and
-            // dies as "noop:". Nothing is composing without marked text, so reset it.
-            if !self.hasMarkedText() {
-                self.unmarkText()
-            }
+            self.clearStaleComposingState()
 
             // User-defined quick-input shortcuts (Settings → Quick Input). Checked
             // first so a user can bind any combo; unconfigured rows and pairs
@@ -571,22 +600,23 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
             guard let code = arrowCode else { return event }
 
-            let mods = event.modifierFlags.intersection([.shift, .option, .control])
-            if mods.isEmpty {
-                // Respect DECCKM: less/vim/etc. set application cursor mode
-                // (\e[?1h) and only recognize SS3-prefixed arrows (\eO A/B/C/D).
-                // Default normal cursor mode uses CSI (\e[ A/B/C/D).
-                let prefix = self.getTerminal().applicationCursor ? "\u{1b}O" : "\u{1b}["
-                self.send(txt: "\(prefix)\(code)")
-            } else {
-                var modifier = 1
-                if mods.contains(.shift) { modifier += 1 }
-                if mods.contains(.option) { modifier += 2 }
-                if mods.contains(.control) { modifier += 4 }
-                // Modified arrows always use CSI — SS3 has no parameter form.
-                self.send(txt: "\u{1b}[1;\(modifier)\(code)")
-            }
+            // Respect DECCKM: less/vim/etc. set application cursor mode
+            // (\e[?1h) and only recognize SS3-prefixed arrows (\eO A/B/C/D).
+            self.send(txt: Self.arrowKeySequence(Character(code), modifiers: event.modifierFlags,
+                                                 applicationCursor: self.usesApplicationCursor))
             return nil // consume the event
+        }
+    }
+
+    /// SwiftTerm sets its kitty "composing" flag in setMarkedText even when the
+    /// IME clears the marked text (e.g. pinyin typed then deleted), and only
+    /// resets it on the next insertText. While stuck, the kitty encoder drops
+    /// every key, so Ctrl+C falls through to interpretKeyEvents and dies as
+    /// "noop:". Nothing is composing without marked text, so reset it. Fixed
+    /// upstream in SwiftTerm 9fc2d2f (2.0 line only) — drop this once on it.
+    func clearStaleComposingState() {
+        if !hasMarkedText() {
+            unmarkText()
         }
     }
 
@@ -614,14 +644,14 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self = self, self.window?.firstResponder === self else { return event }
 
-            let terminal = self.getTerminal()
-            guard terminal.isCurrentBufferAlternate else { return event }
+            guard self.isAlternateScreen else { return event }
             guard event.deltaY != 0 else { return event }
 
             let lines = max(1, Int(abs(event.deltaY)))
             let count = min(lines, 5)
 
-            if terminal.mouseMode != .off {
+            if self.appRequestsMouseEvents {
+                let terminal = self.getTerminal()
                 // Mouse mode: forward as mouse button 4 (scroll up) / 5 (scroll down)
                 let button = event.deltaY > 0 ? 4 : 5
                 let flags = terminal.encodeButton(
@@ -637,10 +667,10 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
                 // No mouse mode: send arrow key sequences so the TUI can scroll.
                 // Match DECCKM (application cursor mode) the same way the arrow
                 // key monitor does, so less/vim/man actually recognize them.
-                let arrow = event.deltaY > 0 ? "A" : "B" // A = Up, B = Down
-                let prefix = terminal.applicationCursor ? "\u{1b}O" : "\u{1b}["
+                let arrow: Character = event.deltaY > 0 ? "A" : "B" // A = Up, B = Down
+                let sequence = Self.arrowKeySequence(arrow, modifiers: [], applicationCursor: self.usesApplicationCursor)
                 for _ in 0..<count {
-                    self.send(txt: "\(prefix)\(arrow)")
+                    self.send(txt: sequence)
                 }
             }
             return nil // consume the event
@@ -725,8 +755,6 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     }
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
-        let terminal = getTerminal()
-
         // SwiftTerm's feedPrepare()/linefeed() clear the active selection on
         // every incoming chunk, but only when allowMouseReporting is true.
         // When the foreground app never requested mouse events (claude/codex
@@ -734,9 +762,9 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         // keep the user's selection alive while output streams. TUIs that do
         // request mouse events (vim with mouse=a, htop) flip mouseMode on and
         // get reporting back on the next chunk.
-        allowMouseReporting = terminal.mouseMode != .off
+        allowMouseReporting = appRequestsMouseEvents
 
-        let wasAlternate = terminal.isCurrentBufferAlternate
+        let wasAlternate = isAlternateScreen
 
         super.dataReceived(slice: slice)
         hasNewData = true
@@ -745,10 +773,10 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         // leaving vim via \e[?1049h/l). The alternate buffer's yDisp is
         // unrelated to the normal buffer's live bottom, so only record when we
         // stayed on the normal buffer for the whole chunk.
-        guard !wasAlternate, !terminal.isCurrentBufferAlternate else { return }
+        guard !wasAlternate, !isAlternateScreen else { return }
 
         if isViewportAtBottom {
-            latestYBase = terminal.buffer.yDisp
+            latestYBase = getTerminal().buffer.yDisp
         }
     }
 
@@ -1221,9 +1249,8 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
     }
 
     func terminalDimensions(for sessionId: UUID) -> (cols: Int, rows: Int)? {
-        guard let terminal = terminals[sessionId] else { return nil }
-        let t = terminal.getTerminal()
-        return (t.cols, t.rows)
+        guard let terminal = terminals[sessionId] as? ClickThroughTerminalView else { return nil }
+        return terminal.terminalSize
     }
 
     func destroyTerminal(for sessionId: UUID) {
@@ -1253,7 +1280,7 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
     /// later spawns inherits it — the auto-launched agent, a `claude` the user
     /// types by hand, `claude --resume`, even one started inside tmux — which
     /// is what lets `HookBridge` attribute a global hook event back to this tab.
-    private func buildEnvironment(sessionId: UUID) -> [String] {
+    func buildEnvironment(sessionId: UUID) -> [String] {
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"

@@ -50,6 +50,8 @@ Tests target pure logic that's cheap to isolate. The first covered area is
 text-parsing that maps terminal output to `TerminalStatus`, the app's most
 regression-prone code. No linting is configured yet.
 
+`SwiftTermSeamTests` pins the behaviors Notchy needs from SwiftTerm, ahead of the 2.0 migration (which removes `getTerminal()` and stops calling `dataReceived` for process output). Mode reads go through four properties on `ClickThroughTerminalView` (`terminalSize`, `usesApplicationCursor`, `isAlternateScreen`, `appRequestsMouseEvents`) so the port is mostly confined to them. The process-output tests run a real `/bin/sh` child and advance it with gate files rather than terminal input, because `TerminalView.send` scrolls the viewport to the bottom. One test is a canary that fails once SwiftTerm fixes its stuck IME composing flag — delete `clearStaleComposingState` along with it.
+
 ## Release
 
 Releases are cut by GitHub Actions, triggered by pushing a `v*` tag. To ship a new version:
