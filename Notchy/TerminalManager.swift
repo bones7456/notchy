@@ -508,6 +508,15 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, self.window?.firstResponder === self else { return event }
 
+            // SwiftTerm sets its kitty "composing" flag in setMarkedText even when
+            // the IME clears the marked text (e.g. pinyin typed then deleted), and
+            // only resets it on the next insertText. While stuck, the kitty encoder
+            // drops every key, so Ctrl+C falls through to interpretKeyEvents and
+            // dies as "noop:". Nothing is composing without marked text, so reset it.
+            if !self.hasMarkedText() {
+                self.unmarkText()
+            }
+
             // User-defined quick-input shortcuts (Settings → Quick Input). Checked
             // first so a user can bind any combo; unconfigured rows (modifiers == 0)
             // and empty commands are skipped via `isActive`.
