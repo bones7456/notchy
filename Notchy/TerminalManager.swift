@@ -620,12 +620,41 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         }
     }
 
+    /// A drag that starts on the right half of a wide (CJK) character puts the
+    /// selection's leading edge on that character's continuation cell. SwiftTerm
+    /// highlights the character but its text extraction skips the continuation
+    /// cell along with the character, so the copy loses it. Moving the edge onto
+    /// the character's first cell makes the copy match the highlight. Returns
+    /// whether it moved the selection. A leading edge scrolled off screen is
+    /// left alone — `getLine` only reaches visible rows.
+    @discardableResult
+    func snapSelectionOffWideCharTail() -> Bool {
+        guard selectionActive else { return false }
+        let start = selection.start, end = selection.end
+        let order = Position.compare(start, end)
+        guard order != .equal else { return false }
+        let leading = order == .before ? start : end
+        guard leading.col > 0 else { return false }
+        let terminal = getTerminal()
+        guard let line = terminal.getLine(row: leading.row - terminal.buffer.yDisp),
+              line[leading.col].width == 0, line[leading.col - 1].width == 2 else { return false }
+        let snapped = Position(col: leading.col - 1, row: leading.row)
+        if order == .before {
+            selection.setSelection(start: snapped, end: end)
+        } else {
+            selection.setSelection(start: start, end: snapped)
+        }
+        return true
+    }
+
     /// iTerm2-style "copy on selection": when the selection settles after a
     /// mouse drag, write the selected text to the system pasteboard. SwiftTerm
     /// fires selectionChanged for every drag extension, so we debounce ~80ms
     /// and only act once the gesture is quiet. Empty selections (single click,
     /// deselection) leave the clipboard untouched.
     override func selectionChanged(source: Terminal) {
+        // Snapping re-enters this method through setSelection, which does the rest.
+        if snapSelectionOffWideCharTail() { return }
         super.selectionChanged(source: source)
         guard SettingsManager.shared.selectionCopyEnabled else { return }
         selectionCopyDebounceTimer?.invalidate()

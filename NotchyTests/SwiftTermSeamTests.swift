@@ -194,6 +194,18 @@ struct SwiftTermSeamTests {
         #expect(view.expandToken(row: 0, col: 2, allowed: ClickThroughTerminalView.wordCharacters) == nil)
     }
 
+    // MARK: - Selection
+
+    @Test("A selection starting on a wide character's right half copies that character",
+          arguments: [(5, 12), (12, 5)])
+    func selectionKeepsWideCharUnderLeadingEdge(anchor: Int, drag: Int) throws {
+        let view = makeView()
+        // Two columns per character: 怎 occupies cols 4–5, 的 starts at 12.
+        feed(view, "二、怎么导入的")
+        view.selection.setSelection(start: Position(col: anchor, row: 0), end: Position(col: drag, row: 0))
+        #expect(view.getSelection() == "怎么导入")
+    }
+
     // MARK: - Process output
 
     @Test("Process output reaches Notchy's output hook")
